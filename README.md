@@ -1,89 +1,122 @@
 # Wida Frontend
 
-The web frontend for Wida, built with Next.js, React, and TypeScript.
+Wida is a document inbox and invoice review workspace built with Next.js, React, and TypeScript. Upload originals, compare extracted invoice details with their source, correct uncertain fields, and keep saved invoices together.
 
-The application is currently a starter scaffold: `/` displays the default Next.js welcome page, and the page metadata still uses the Create Next App defaults. There are no Wida product screens, authentication flows, or calls to the Wida API yet. You can run this frontend independently of the backend.
+![Wida application document inbox with eight fictional demo documents.](docs/images/workspace-inbox.png)
 
-## Requirements
+*Current application in demo mode. The suppliers, invoices, and extraction results shown here are fictional.*
 
-- **Node.js 20.19+ (20.x), 22.13+ (22.x), or 24+**, matching the locked lint toolchain's requirements. Local validation uses **22.23.2**.
-- **pnpm 12.3.4**, the version declared in `package.json`.
+## What works
 
-The project uses Next.js 16.3.4, React 19.2.8, Tailwind CSS 4, TypeScript 5, and ESLint 9. Use the committed `pnpm-lock.yaml` to install the resolved dependency versions.
+- Document inbox with search, status tabs, actionable counts, supplier/date sorting, currency and upload-date filters, selection, and client-side pagination.
+- Multiple-file upload with drag-and-drop or a file picker: up to 20 PDF, PNG, JPEG, or TIFF files at a time, each up to 20 MiB (shown as 20 MB in the interface).
+- Invoice review with original-document preview, confidence indicators, explicit checks for uncertain fields, manual line items, inline validation, and processing history.
+- Invoice creation and editing, draft recovery, review-next navigation, and CSV export of saved invoice headers.
+- Responsive navigation and review panels, light/dark preferences, and keyboard shortcuts: `/` to search, `U` to upload, and `?` for help.
 
-## Local development
+![Wida application reviewing the fictional Atelier North invoice beside its source.](docs/images/workspace-review.png)
 
-Run these commands from the `wida-front` directory:
+*Current application: the low-confidence invoice number needs a check against the source before saving.*
+
+The [UI design guide](docs/ui-design.md) explains the workflow, current API integration, remaining work, and original concept. See [development and verification](docs/development.md) for a manual browser checklist and troubleshooting.
+
+## Run the demo
+
+Use **Node.js 22.23.2 or newer supported 22.x, or Node.js 24+**, and **pnpm 12.3.4**. Node.js 22.23.2 is the baseline for the documented development and native TypeScript test commands.
+
+From `wida-front`:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Edit `app/page.tsx` to change the home page; the development server updates the page when files change.
+Open [http://localhost:3000](http://localhost:3000). No environment file or backend is needed for demo mode. To use another port, run `pnpm dev --port 3001`.
 
-No environment variables or `.env` file are required by the current application. There is no API URL setting, API client, or proxy configuration yet. The layout uses `next/font/google` for Geist and Geist Mono, so font compilation requires access to Google Fonts when the fonts are not cached.
+The demo starts with eight fictional documents. Edits, saved invoices, and drafts use this browser origin's local storage; files you upload are kept in IndexedDB. New uploads have empty invoice fields for manual entry. Only the seeded examples demonstrate extraction: the demo does not send your files to an extraction service or invent results for them.
 
-To use a different development port:
+Browser data is local to that browser and origin. Clearing site data removes the demo records and uploaded originals. See [storage and reset](docs/development.md#storage-and-reset) before resetting a workspace.
+
+## Connect the API
+
+Configure and start the Wida API, including PostgreSQL, using its own README. From the backend repository, use the local HTTP launch profile:
 
 ```bash
-pnpm dev --port 3001
+dotnet run --project Wida.Api --launch-profile http
 ```
+
+In `wida-front`, copy [.env.example](.env.example) to `.env.local` and set the **server-only** API origin, without an `/api` suffix:
+
+```dotenv
+WIDA_API_URL=http://localhost:5085
+```
+
+Restart the frontend server. The workspace now loads live documents; it does not merge demo records into the backend. Automatic extraction additionally needs the API's Azure Document Intelligence configuration. Without it, you can upload files and enter invoice details manually.
+
+The browser calls the same-origin `/api/wida/...` route. Its Next.js server proxy forwards supported `GET`, `POST`, and `PUT` requests to the configured backend, including streaming uploads, original files, and byte ranges. Keep the API URL on the server; no `NEXT_PUBLIC_` variable is needed.
+
+The proxy refuses upstream redirects. For local development, use the HTTP launch profile above; for HTTPS, use an endpoint with a certificate trusted by the frontend's Node.js process. A redirect or untrusted certificate appears as an API connection error.
+
+## Demo and live behavior
+
+| Behavior | Demo | Live API |
+| --- | --- | --- |
+| Starting data | Eight fictional documents | Latest 500 documents from the workspace endpoint |
+| Original files | Generated sample illustrations; user uploads in IndexedDB | Backend file-content endpoint |
+| Extraction | Seeded sample results; new uploads use manual entry | Explicit analysis request, optionally after upload |
+| Saved invoices | Local storage | API `POST` or `PUT` |
+| Unsaved drafts and field checks | Local storage | Session storage in the current browser tab |
+| Theme preference | Local storage | Local storage |
+| CSV export | Generated in the browser | Generated in the browser from loaded records |
+
+Search, counts, filters, pagination, and exports operate on the loaded workspace. In live mode this is the latest 500 documents, not the full database. Export includes saved records matching the current filters across client pages, or the selected subset when a selection is active; line items are not included in the CSV.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Start the development server. |
-| `pnpm lint` | Run ESLint with Next.js Core Web Vitals and TypeScript rules. |
-| `pnpm build` | Create a production build in `.next/`. |
+| `pnpm dev` | Start development mode. |
+| `pnpm lint` | Run ESLint. |
+| `pnpm test` | Run form, API-adapter, and workspace-state tests with Node's test runner. |
+| `pnpm exec next typegen` | Generate Next.js route types. |
+| `pnpm exec tsc --noEmit` | Check TypeScript after route types exist. |
+| `pnpm build` | Create a production build. |
 | `pnpm start` | Serve an existing production build. |
 
-To check and run a production build locally:
-
-```bash
-pnpm lint
-pnpm build
-pnpm start
-```
-
-The production server defaults to [http://localhost:3000](http://localhost:3000). Run `pnpm build` before `pnpm start`. Linting is a separate check; Next.js 16 does not run it as part of the build. No automated test suite or `test` script is configured yet.
-
-To check TypeScript without building the application:
-
-```bash
-pnpm exec next typegen && pnpm exec tsc --noEmit
-```
-
-Generate the route types first because `app/layout.tsx` uses Next.js's generated `LayoutProps` helper. These types are also generated by `pnpm dev` and `pnpm build`.
-
-If a build reports `Failed to fetch Geist` or `Failed to fetch Geist Mono`, check that the build environment can reach Google Fonts. No Wida backend configuration is needed to resolve font downloads.
+The test script runs `node --experimental-strip-types --test tests/*.test.mjs`. Linting is separate from the Next.js build. The layout uses system fonts and does not download Google Fonts during compilation.
 
 ## Project structure
 
 ```text
 app/
-  favicon.ico         Application icon
-  globals.css         Tailwind import, theme variables, and global styles
-  layout.tsx          Root HTML layout, page metadata, and font setup
-  page.tsx            Home route (/), currently the starter page
-public/               Static SVG assets from the starter
-eslint.config.mjs     Next.js and TypeScript lint rules
-next.config.ts        Next.js configuration (currently defaults)
-package.json          Dependencies, scripts, and pnpm version
-pnpm-lock.yaml        Resolved dependency versions
-pnpm-workspace.yaml   Dependency build-script policy (sharp and unrs-resolver disabled)
-postcss.config.mjs    Tailwind CSS PostCSS integration
-tsconfig.json         Strict TypeScript settings and @/* import alias
+  page.tsx                   Selects demo or live workspace
+  layout.tsx                 Wida metadata and root layout
+  globals.css                Workspace styles and theme tokens
+  api/wida/[...path]/route.ts Server-side API proxy
+components/
+  workspace.tsx              Inbox, navigation, persistence, and actions
+  upload-dialog.tsx          Multiple-file upload workflow
+  invoice-review.tsx         Editable invoice, validation, and history
+  document-preview.tsx       Sample, image, and native PDF previews
+lib/                        API client, contracts, demo data, form helpers, storage
+tests/                      Form, API-adapter, and workspace-state unit tests
+docs/                       UI guide, development notes, screenshots, original concept
+.env.example                Server-only API origin example
 ```
 
-The `@/*` import alias resolves from the repository root. For example, `@/app/...` resolves to `app/...`.
+The UI uses native HTML controls, custom styles, and `lucide-react` icons. shadcn/ui is a design reference, not an installed dependency. The `@/*` import alias resolves from the repository root.
+
+## Current limits
+
+The API extracts seven header fields from the first analyzed document; line items remain manual. Live PDFs use the browser's PDF viewer. Field-to-source highlighting is demonstrated on sample invoices, but live extraction polygons are not drawn. Image and sample previews have custom zoom and rotation controls; PDF controls depend on the browser. TIFF preview support also depends on the browser.
+
+There is no authentication, background processing worker, approval/rejection workflow, or server-persisted draft and field-review audit trail. **Extraction completed**, **checked in the form**, and **invoice saved** are separate events. Live PostgreSQL and Azure end-to-end validation must be performed in a configured environment; screenshots of the demo do not establish that integration result.
 
 ## Contributing
 
-Keep changes focused and update this README when you add routes, environment settings, API integration, or development commands. Run `pnpm lint` and `pnpm build` before submitting application changes, and commit lockfile changes when dependencies change.
+Update the docs when routes, environment settings, or behavior change. Run lint, the form tests, TypeScript checks, and a production build for application changes, then use the [browser checklist](docs/development.md#manual-browser-checklist) for affected workflows. Commit lockfile changes when dependencies change.
 
-Coding agents should read [AGENTS.md](AGENTS.md) and the relevant version-specific Next.js guides in `node_modules/next/dist/docs/` before changing application code.
+Coding agents should read [AGENTS.md](AGENTS.md) and the relevant version-specific guides in `node_modules/next/dist/docs/` before changing application code.
 
 ## Licence
 
