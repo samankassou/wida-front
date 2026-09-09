@@ -1,5 +1,18 @@
 export type WorkspaceMode = "demo" | "live";
 
+export interface SessionUser {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+export interface AuthSession {
+  authenticated: boolean;
+  googleConfigured: boolean;
+  user: SessionUser | null;
+  csrfToken: string;
+}
+
 export interface DocumentRecord {
   id: string;
   originalFileName: string;

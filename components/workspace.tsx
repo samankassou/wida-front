@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { getDemoItems, getDemoRun } from "@/lib/demo-data";
 import { amountOf, currencyOf, dateLabel, money, numberOf, stageLabels, stageOf, supplierOf } from "@/lib/format";
 import { createDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-form";
-import { getDocumentFile, loadDraft, loadWorkspace, putDocumentFile, removeDraft, saveDraft, saveWorkspace } from "@/lib/storage";
+import { getDocumentFile, hasLiveDrafts, loadDraft, loadWorkspace, putDocumentFile, removeDraft, saveDraft, saveWorkspace } from "@/lib/storage";
 import { mergeAnalysisResult, mergeInvoiceResult, nextReviewItem } from "@/lib/workspace-state";
-import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, WorkspaceItem, WorkspaceMode } from "@/lib/types";
+import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, SessionUser, WorkspaceItem, WorkspaceMode } from "@/lib/types";
 import UploadDialog from "./upload-dialog";
 
 const InvoiceReview = dynamic(() => import("./invoice-review"), { loading: () => <div className="review-loading"><LoaderCircle className="spin" /><p>Opening your document…</p></div> });
@@ -25,7 +25,11 @@ function StatusBadge({ stage }: { stage: DocumentStage }) {
 }
 function csvValue(value: unknown) { const text = String(value ?? ""); return `"${(/^[\s]*[=+@-]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`; }
 
-export default function Workspace({ mode }: { mode: WorkspaceMode }) {
+export default function Workspace({ mode, user, apiSession, onLogout }: { mode: WorkspaceMode; user?: SessionUser; apiSession?: api.ApiSession; onLogout?: () => Promise<void> }) {
+  const client = useMemo(() => api.createApiClient(apiSession), [apiSession]);
+  const userId = user?.id;
+  const initials = user ? (user.displayName || user.email).split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() : "W";
+  const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
   const params = useSearchParams();
   const view = params.get("view") === "invoices" ? "invoices" : params.get("document") ? "review" : "documents";
@@ -83,24 +87,24 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
     let active = true;
     const revision = workspaceRevision.current;
     Promise.resolve().then(async () => {
-      try { const records = mode === "demo" ? loadWorkspace() ?? getDemoItems() : await api.fetchWorkspace(); if (active && revision === workspaceRevision.current) { itemsRef.current = records; setItems(records); setLoadError(null); } }
+      try { const records = mode === "demo" ? loadWorkspace() ?? getDemoItems() : await client.fetchWorkspace(); if (active && revision === workspaceRevision.current) { itemsRef.current = records; setItems(records); setLoadError(null); } }
       catch (cause) { if (active) setLoadError(cause instanceof Error ? cause.message : "Unable to load documents."); }
       finally { if (active) setLoading(false); }
       try { const saved = localStorage.getItem("wida:theme:v1"); if (active && (saved === "dark" || saved === "light")) setTheme(saved); } catch { /* Default appearance. */ }
     });
     return () => { active = false; };
-  }, [mode]);
+  }, [mode, client]);
   useEffect(() => {
     if (!selectedId) return;
     let active = true; let objectUrl: string | null = null;
     Promise.resolve().then(async () => {
       if (!active) return;
       setRuns([]); setSourceUrl(null); setSaveError(null); setServerErrors({});
-      const restored = loadDraft(selectedId, mode);
+      const restored = loadDraft(selectedId, mode, userId);
       if (restored && !draftsRef.current[selectedId]) rememberDraft(selectedId, restored);
       if (mode === "live") {
         if (active) setSourceUrl(`/api/wida/documents/${encodeURIComponent(selectedId)}/content`);
-        try { const result = await api.fetchRuns(selectedId); if (active) setRuns(result); }
+        try { const result = await client.fetchRuns(selectedId); if (active) setRuns(result); }
         catch { if (active) notify("Processing history couldn't be loaded. You can still review this document."); }
       } else {
         try { const file = await getDocumentFile(selectedId); if (!active) return; if (file) objectUrl = URL.createObjectURL(file); setSourceUrl(objectUrl); }
@@ -108,7 +112,7 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
       }
     });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [selectedId, mode, notify, rememberDraft]);
+  }, [selectedId, mode, userId, client, notify, rememberDraft]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -134,7 +138,7 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
   function updateStorageWarning() { setStorageWarning(workspaceStorageFailed.current || failedDrafts.current.size > 0); }
   function storeDraft(id: string, value: ReviewDraft) {
     rememberDraft(id, value);
-    if (saveDraft(id, mode, value)) failedDrafts.current.delete(id); else failedDrafts.current.add(id);
+    if (saveDraft(id, mode, value, userId)) failedDrafts.current.delete(id); else failedDrafts.current.add(id);
     updateStorageWarning();
   }
   function persist(records: WorkspaceItem[], requireDurable = false): boolean {
@@ -157,7 +161,7 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
         notify("Your current documents have been kept. Browser storage could not be updated; keep this tab open and try saving again.");
         return;
       }
-      const records = mode === "live" ? await api.fetchWorkspace() : loadWorkspace() ?? getDemoItems();
+      const records = mode === "live" ? await client.fetchWorkspace() : loadWorkspace() ?? getDemoItems();
       if (revision === workspaceRevision.current) { itemsRef.current = records; setItems(records); }
     }
     catch (cause) { setLoadError(cause instanceof Error ? cause.message : "Unable to refresh documents."); }
@@ -171,13 +175,25 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
       const type = file.type || (extension === "pdf" ? "application/pdf" : extension === "png" ? "image/png" : extension === "tif" || extension === "tiff" ? "image/tiff" : "image/jpeg");
       added = { document: { id, originalFileName: file.name, contentType: type, documentType: "Unknown", status: "Uploaded", uploadedAt: new Date().toISOString() }, invoice: null, latestRun: null };
     } else {
-      added = { document: await api.uploadDocument(file), invoice: null, latestRun: null };
+      added = { document: await client.uploadDocument(file), invoice: null, latestRun: null };
       if (extract) {
-        try { added.latestRun = await api.analyzeDocument(added.document.id); }
+        try { added.latestRun = await client.analyzeDocument(added.document.id); }
         catch { added.latestRun = { id: "request-interrupted", documentId: added.document.id, status: "Failed", processor: "Invoice extraction", processorVersion: null, startedAt: new Date().toISOString(), completedAt: null, errorCode: "CONNECTION_INTERRUPTED", errorMessage: "Your upload was saved, but the extraction response was interrupted. Refresh the document before retrying.", extractedFields: [] }; }
       }
     }
     persist([added, ...itemsRef.current]); return added;
+  }
+  async function signOut() {
+    if (!onLogout || !userId || loggingOut) return;
+    if (activeSaves.current.size || activeAnalyses.current.size || uploadOpen) {
+      notify("Finish the current operation and close the upload dialog before signing out.");
+      return;
+    }
+    if ((hasLiveDrafts(userId) || failedDrafts.current.size > 0) && !window.confirm("Sign out and remove this tab’s unsaved drafts? Save your invoices first if you want to keep these changes.")) return;
+    setLoggingOut(true);
+    try { await onLogout(); }
+    catch (cause) { notify(cause instanceof Error ? cause.message : "Sign out failed. Please try again."); }
+    finally { setLoggingOut(false); }
   }
   function changeDraft(updated: ReviewDraft) {
     if (!item) return;
@@ -195,12 +211,12 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
     setSaveError(null); setServerErrors({});
     try {
       const payload = toInvoicePayload(updated.values, documentId);
-      const invoice: Invoice = mode === "live" ? await api.saveInvoice(payload, item.invoice?.id) : { ...payload, id: item.invoice?.id ?? crypto.randomUUID(), createdAt: item.invoice?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const invoice: Invoice = mode === "live" ? await client.saveInvoice(payload, item.invoice?.id) : { ...payload, id: item.invoice?.id ?? crypto.randomUUID(), createdAt: item.invoice?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString() };
       const records = mergeInvoiceResult(itemsRef.current, documentId, invoice);
       if (!persist(records, true)) throw new Error("This browser could not save the invoice. Your draft has been kept. Free some browser storage, then try Save again.");
       const savedItem = records.find(row => row.document.id === documentId);
       if (savedItem) rememberDraft(documentId, createDraft(savedItem));
-      removeDraft(documentId, mode); failedDrafts.current.delete(documentId); updateStorageWarning();
+      removeDraft(documentId, mode, userId); failedDrafts.current.delete(documentId); updateStorageWarning();
       notify(currentDocumentId.current === documentId ? item.invoice ? "Invoice changes saved." : "Invoice saved. One less thing on your list." : `${item.document.originalFileName}: invoice saved.`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "The invoice could not be saved. Your draft has been kept.";
@@ -217,11 +233,11 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
     if (mode === "demo" && !item.sample) { notify("This file is stored locally. Enter the invoice details manually, or connect the API to extract them."); return; }
     activeAnalyses.current.add(documentId); setAnalyzingDocuments(new Set(activeAnalyses.current)); setSaveError(null);
     try {
-      const run = mode === "demo" ? getDemoRun(item) : await api.analyzeDocument(documentId);
+      const run = mode === "demo" ? getDemoRun(item) : await client.analyzeDocument(documentId);
       const records = mergeAnalysisResult(itemsRef.current, documentId, run);
       persist(records);
       const updated = records.find(row => row.document.id === documentId);
-      if (updated && !draftsRef.current[documentId] && !loadDraft(documentId, mode)) rememberDraft(documentId, createDraft(updated));
+      if (updated && !draftsRef.current[documentId] && !loadDraft(documentId, mode, userId)) rememberDraft(documentId, createDraft(updated));
       if (currentDocumentId.current === documentId) {
         setRuns(previous => [run, ...previous.filter(existing => existing.documentId === documentId && existing.id !== run.id)]);
         notify(run.status === "Failed" ? "Extraction failed. You can retry or enter the details manually." : "Extraction finished. Your document is ready to review.");
@@ -270,9 +286,9 @@ export default function Workspace({ mode }: { mode: WorkspaceMode }) {
       <nav aria-label="Main navigation"><button className={`nav-item ${view !== "invoices" ? "active" : ""}`} onClick={() => navigate("documents")} aria-current={view !== "invoices" ? "page" : undefined}><Inbox size={19} /><span>Documents</span><span className="nav-count">{items.length}</span></button><button className={`nav-item ${view === "invoices" ? "active" : ""}`} onClick={() => navigate("invoices")} aria-current={view === "invoices" ? "page" : undefined}><ReceiptText size={19} /><span>Invoices</span></button></nav>
       <div className="sidebar-divider" /><p className="nav-label">QUICK VIEWS</p>
       <button className="nav-item subnav" onClick={() => { navigate("documents"); setFilter("review"); }}><span className="nav-status-dot amber" /><span>Needs review</span><span className="quiet-count">{counts.review}</span></button><button className="nav-item subnav" onClick={() => { navigate("documents"); setFilter("failed"); }}><span className="nav-status-dot rose" /><span>Needs attention</span>{counts.failed ? <span className="quiet-count">{counts.failed}</span> : null}</button>
-      <div className="sidebar-bottom"><div className="sidebar-tip"><span className="tip-symbol"><Sparkles size={18} /></span><strong>A lighter way to work.</strong><p>From scattered paperwork to clear, organized records.</p><button onClick={() => setPanel("help")}>Take a quick tour<ArrowUpRight size={14} /></button></div><button className="nav-item" onClick={() => setPanel("settings")}><Settings2 size={18} /><span>Workspace settings</span></button><button className="nav-item" onClick={() => setPanel("help")}><HelpCircle size={18} /><span>Help & shortcuts</span></button><div className="sidebar-profile"><span className="profile-avatar">W</span><div><strong>Your workspace</strong><small>{mode === "demo" ? "Stored on this device" : "Connected to Wida"}</small></div><span className="connection-dot" /></div></div>
+      <div className="sidebar-bottom"><div className="sidebar-tip"><span className="tip-symbol"><Sparkles size={18} /></span><strong>A lighter way to work.</strong><p>From scattered paperwork to clear, organized records.</p><button onClick={() => setPanel("help")}>Take a quick tour<ArrowUpRight size={14} /></button></div><button className="nav-item" onClick={() => setPanel("settings")}><Settings2 size={18} /><span>Workspace settings</span></button><button className="nav-item" onClick={() => setPanel("help")}><HelpCircle size={18} /><span>Help & shortcuts</span></button><div className="sidebar-profile"><span className="profile-avatar" aria-hidden="true">{initials}</span><div className="profile-details"><strong>{user?.displayName || "Your workspace"}</strong><small title={user?.email}>{user?.email || "Stored on this device"}</small></div>{onLogout ? <button className="icon-button profile-logout" aria-label="Sign out" title="Sign out" onClick={signOut} disabled={loggingOut}>{loggingOut ? <LoaderCircle size={17} className="spin" /> : <LogOut size={17} />}</button> : <span className="connection-dot" />}</div></div>
     </aside>
-    <div className="workspace-body"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label={mobileNav ? "Close navigation" : "Open navigation"} aria-expanded={mobileNav} aria-controls="workspace-sidebar" onClick={() => setMobileNav(previous => !previous)}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{view === "invoices" ? "Invoices" : "Documents"}</strong>{view === "review" ? <><ChevronRight size={13} /><span className="breadcrumb-detail">Review</span></> : null}</div><div className="topbar-actions"><span className={`connection-label ${mode === "demo" ? "demo" : ""}`}><span />{mode === "demo" ? "Demo workspace" : loadError ? "Connection unavailable" : "Live workspace"}</span><button className="icon-button help-icon" aria-label="Help and keyboard shortcuts" onClick={() => setPanel("help")}><HelpCircle size={18} /></button><span className="topbar-separator" /><span className="topbar-avatar" aria-label="Personal workspace">W</span></div></header>
+    <div className="workspace-body"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label={mobileNav ? "Close navigation" : "Open navigation"} aria-expanded={mobileNav} aria-controls="workspace-sidebar" onClick={() => setMobileNav(previous => !previous)}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{view === "invoices" ? "Invoices" : "Documents"}</strong>{view === "review" ? <><ChevronRight size={13} /><span className="breadcrumb-detail">Review</span></> : null}</div><div className="topbar-actions"><span className={`connection-label ${mode === "demo" ? "demo" : ""}`}><span />{mode === "demo" ? "Demo workspace" : loadError ? "Connection unavailable" : "Live workspace"}</span><button className="icon-button help-icon" aria-label="Help and keyboard shortcuts" onClick={() => setPanel("help")}><HelpCircle size={18} /></button><span className="topbar-separator" /><span className="topbar-avatar" aria-label={user ? `Signed in as ${user.email}` : "Personal workspace"}>{initials}</span></div></header>
     <main id="main-content" className={view === "review" ? "main-content review-main" : "main-content"}>
       {storageWarning ? <div className="error-banner" role="alert"><CircleAlert size={18} /><span>Browser storage is full or unavailable. Keep this tab open and save your invoice before leaving.</span></div> : null}
       {view === "review" ? item && draft ? <InvoiceReview key={item.document.id} item={item} draft={draft} onDraftChange={changeDraft} onSave={onSave} onBack={() => navigate("documents")} onNext={() => { if (nextReview) openItem(nextReview.document.id); }} hasNext={Boolean(nextReview)} saving={saving} mode={mode} sourceUrl={sourceUrl} runs={mode === "demo" ? item.latestRun ? [item.latestRun] : [] : runs} onAnalyze={analyze} analyzing={analyzing} serverErrors={serverErrors} error={saveError} /> : loading ? <div className="review-loading"><LoaderCircle className="spin" />Loading document…</div> : <div className="empty-state"><FolderOpen /><h2>We couldn’t find this document</h2><p>{loadError || "The link may be outdated, or the document belongs to another workspace."}</p><button className="button" onClick={() => navigate("documents")}><ArrowLeft size={16} />Back to documents</button></div> : <>

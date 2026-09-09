@@ -14,7 +14,7 @@ pnpm exec tsc --noEmit
 pnpm build
 ```
 
-The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, and workspace updates/navigation. It does not exercise a browser, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
+The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, workspace updates/navigation, session credentials, CSRF headers on every mutation, session expiry, and draft ownership isolation. It does not exercise a browser, Google, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
 
 The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. This fallback passed on the development host on 8 September 2026; the normal `pnpm build` script remains unchanged. The host-specific permission failure does not require changing the application or disabling sandbox protections.
 
@@ -43,6 +43,12 @@ Use a fresh browser profile or an expendable demo workspace for repeatable check
 
 For a configured live environment, also verify:
 
+- Before sign-in, show the Google login page and confirm no workspace/original requests are made. A missing Google configuration must display a setup message and never allow anonymous document access.
+- Sign in with an invited Google account. Verify name/email and sign-out, then try a non-invited account and a cancelled or failed Google callback.
+- Open two different invited accounts in separate browser profiles. Each must see only its own documents; copied original, invoice, and processing URLs from the other profile must not reveal records.
+- Edit an invoice, reload, and verify draft recovery. Expire the server session, then trigger a request: the workspace must close and the same account must recover its draft after signing in again. A different account must never load it.
+- Sign out with unsaved changes and cancel the confirmation to keep working. Confirm sign-out on a second attempt and check that sensitive UI and the current account's live drafts are cleared. In another open tab, the old workspace must close too. Use browser Back and return focus to verify the session is checked again.
+- Confirm upload, extraction, invoice creation/update, and sign-out carry `X-CSRF-TOKEN`; requests with a missing token or foreign Origin must be rejected by the server/proxy.
 - Upload and preview a supported original, save a manually entered invoice, refresh, and update it through the API.
 - Run extraction with valid Azure configuration, review its seven header fields, and confirm history and save behavior.
 - Exercise missing/invalid extraction configuration, invalid invoice input, duplicate creation, and interrupted requests. A processing response with HTTP `201` may still have `status: "Failed"`.
@@ -57,20 +63,23 @@ These are verification instructions, not a claim that a live PostgreSQL/Azure ru
 | --- | --- |
 | Demo documents and saved invoices | Local storage key `wida:demo:v2` |
 | Demo drafts and field checks | Local storage keys beginning `wida:draft:v1:` |
-| Live unsaved drafts and field checks | Session storage keys beginning `wida:draft:v1:` |
+| Live unsaved drafts and field checks | Session storage keys `wida:live-draft:v2:<user-id>:<document-id>` |
+| Cross-tab authentication change notification | Local storage key `wida:auth-change:v1` containing an opaque user id and event metadata; no session or CSRF token |
 | Demo uploaded originals | IndexedDB database `wida-local-files`, store `documents` |
 | Light/dark preference | Local storage key `wida:theme:v1` |
 
 To restore the initial demo, first retain anything you need, then clear the site's storage in browser developer tools and reload. This removes locally uploaded originals and demo edits. A different browser profile or origin starts with separate storage. Live saved records remain in the API; clearing browser storage affects unsaved live drafts, not those server records.
 
-Drafts are browser recovery data, not a shared review log. Live drafts are scoped to the browser tab's session and do not provide cross-device continuation. Storage failures display a warning; keep the page open until you have saved or retained the values you need.
+Drafts are browser recovery data, not a shared review log. Live drafts are scoped to both the signed-in user and browser tab; they do not provide cross-device continuation. Session expiry preserves stored drafts for the same user. Explicit sign-out clears that user's drafts after an unsaved-change warning. Old live draft keys without an owner are left untouched but never loaded into an authenticated workspace because they cannot safely be attributed to an account. They require explicit recovery or cleanup; demo drafts are unaffected. Storage failures display a warning; keep the page open until you have saved or retained the values you need.
 
 ## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
 | Demo appears instead of live records | Set server-only `WIDA_API_URL` in `.env.local` and restart the frontend. |
-| API connection error / proxy `502` | Confirm the API is listening at the configured origin. Use `http://localhost:5085` with `--launch-profile http`, or trusted HTTPS. The proxy refuses upstream redirects. |
+| API connection error / proxy `502` | Confirm the API is listening at the configured origin. Use `http://localhost:5085` with `--launch-profile http`, or trusted HTTPS. Only approved authentication redirects pass through the proxy. |
+| Google setup message or callback failure | Check the API's Google client credentials, invitation list, and `Authentication:PublicOrigin`; this must match `WIDA_PUBLIC_ORIGIN` and the registered Google callback URI. |
+| Mutation rejected with `403` | Check the browser's Origin against `WIDA_PUBLIC_ORIGIN` and the session's `X-CSRF-TOKEN`. Reconnect if the account changed in another tab. |
 | Extraction fails after upload | Inspect History and the API's Azure configuration. The stored original can still be reviewed and entered manually. |
 | Source does not render | Open the original in a new tab. PDF/TIFF handling depends on the browser; unavailable files and invalid stored paths need backend investigation. |
 | Older documents missing from search/export | The frontend loads the latest 500 documents; current filters do not query beyond them. |
