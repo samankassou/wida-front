@@ -32,7 +32,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No environment file or backend is needed for demo mode. To use another port, run `pnpm dev --port 3001`.
+Open [http://localhost:3000](http://localhost:3000). No environment file or backend is needed for demo mode. Leave `WIDA_API_URL` unset or empty; a value in `.env`, `.env.local`, or the process environment enables live mode. To use another port, run `pnpm dev --port 3001`.
 
 The demo starts with eight fictional documents. Edits, saved invoices, and drafts use this browser origin's local storage; files you upload are kept in IndexedDB. New uploads have empty invoice fields for manual entry. Only the seeded examples demonstrate extraction: the demo does not send your files to an extraction service or invent results for them.
 
@@ -78,16 +78,23 @@ The proxy permits the controlled Google login/callback redirects and refuses red
 
 Search, counts, filters, pagination, and exports operate on the loaded workspace. In live mode this is the latest 500 documents, not the full database. Export includes saved records matching the current filters across client pages, or the selected subset when a selection is active; line items are not included in the CSV.
 
+## Drafts and extraction retries
+
+Untouched forms use the latest extraction values, including after a failed run is retried successfully. Once you edit a form, Wida keeps that draft when extraction runs again. Review checkmarks belong to the extraction run that you checked: a new run clears those checkmarks while retaining your edited values. Recovered legacy drafts without a run ID also require checking again. Saving successfully clears the draft and displays the saved invoice.
+
+The API keeps a document `Saved` when invoice saving overlaps extraction, including when extraction fails or is cancelled. Processing history still reports each run's own result. Neither a saved status nor a field check is a formal approval or a server-side review audit trail.
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `pnpm dev` | Start development mode. |
 | `pnpm lint` | Run ESLint. |
-| `pnpm test` | Run form, API-adapter, and workspace-state tests with Node's test runner. |
+| `pnpm test` | Run form/draft, auth/session, proxy, API-adapter, and workspace-state tests with Node's test runner. |
 | `pnpm exec next typegen` | Generate Next.js route types. |
 | `pnpm exec tsc --noEmit` | Check TypeScript after route types exist. |
-| `pnpm build` | Create a production build. |
+| `pnpm build` | Create a production build with Turbopack. |
+| `pnpm build --webpack` | Alternative production build when the host cannot run Turbopack. |
 | `pnpm start` | Serve an existing production build. |
 
 The test script runs `node --experimental-strip-types --test tests/*.test.mjs`. Linting is separate from the Next.js build. The layout uses system fonts and does not download Google Fonts during compilation.
@@ -103,14 +110,15 @@ app/
   api/wida/[...path]/route.ts Server-side API proxy
 components/
   auth-gate.tsx              Live session gate, login, and session expiry
-  workspace.tsx              Inbox, navigation, persistence, and actions
+  workspace.tsx              Inbox, navigation, document actions, and review coordination
+  use-review-drafts.ts       Edited draft recovery, persistence, and storage failures
   upload-dialog.tsx          Multiple-file upload workflow
   invoice-review.tsx         Editable invoice, validation, and history
   document-preview.tsx       Sample, image, and native PDF previews
 lib/                        API client, contracts, demo data, form helpers, storage
-tests/                      Form, API-adapter, and workspace-state unit tests
+tests/                      Form/draft, auth, proxy, API-adapter, and workspace-state tests
 docs/                       UI guide, development notes, screenshots, original concept
-.env.example                Server-only API origin example
+.env.example                Server-only API and public frontend origin examples
 ```
 
 The UI uses native HTML controls, custom styles, and `lucide-react` icons. shadcn/ui is a design reference, not an installed dependency. The `@/*` import alias resolves from the repository root.

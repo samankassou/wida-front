@@ -2,7 +2,7 @@
 
 **Wida centers on a document inbox and side-by-side invoice review.** The interface helps users find work needing attention, compare extracted values with the original, correct mistakes, and save reliable invoice data.
 
-This guide describes the implemented frontend as of 8 September 2026, then preserves the original concept for design context. See the [frontend README](../README.md) to run the demo or connect the API.
+This guide describes the implemented frontend as of 10 September 2026, then preserves the original concept for design context. See the [frontend README](../README.md) to run the demo or connect the API.
 
 ## Users and priorities
 
@@ -18,7 +18,7 @@ Upload document → Extract or enter details → Review and correct → Save inv
 
 ## Current application
 
-The Next.js application implements the workflow in demo and live modes. Demo data is fictional and persists locally; live mode uses the configured Wida API. It is no longer the starter page or the standalone concept below.
+The Next.js application implements the workflow in demo and live modes. Demo data is fictional and persists locally; live mode requires Google sign-in with an invited account and uses the configured Wida API. Each account sees only its own documents. It is no longer the starter page or the standalone concept below.
 
 ### Documents: the home screen
 
@@ -42,7 +42,7 @@ Desktop review places the source on the left and the form on the right. The form
 
 The source panel renders fictional sample invoices, uploaded images, or the original PDF through the browser's native viewer. Custom zoom and rotation apply to images and sample invoices; PDFs use their native viewer controls. Sample source values link to the corresponding form fields. Live PDF/image extraction polygons are not yet rendered.
 
-The application saves drafts after edits: local storage in demo mode and session storage in live mode. Successful saves create or update an invoice and clear its draft. Field checkboxes support the current review session; the backend does not retain those decisions as an audit trail.
+The application saves drafts after edits: local storage in demo mode and session storage in live mode. Successful saves create or update an invoice and clear its draft. Untouched forms follow the latest extraction, while edited drafts retain their values across retries. Field checkboxes are associated with an extraction run and reset when that run changes; the backend does not retain those decisions as an audit trail. Live drafts are scoped to the signed-in user and current browser tab.
 
 ### Invoices: saved records
 
@@ -60,11 +60,11 @@ Machine extraction, human checking, and invoice persistence are distinct:
 | Processing | A processing run is in progress; manual pending runs do not run automatically. |
 | Extraction completed | The run is `Completed`; this does not mean a human checked it or an invoice was saved. |
 | Needs review | An unsaved document has completed extraction. Missing or uncertain fields still require attention. |
-| Checked against the original | A local form acknowledgement. Editing the field clears its acknowledgement. |
+| Checked against the original | A local form acknowledgement. Editing the field or receiving a different extraction run clears its acknowledgement. |
 | Invoice saved | An invoice record exists. This is not a formal approval. |
 | Extraction failed | The latest run failed; history exposes its reason and a retry action. |
 
-The API now transitions unsaved documents through `Processing` to `ReviewRequired` or `Failed`, and invoice saves set `Saved`. Reanalysis preserves an already saved document's `Saved` status while the run records its own result. The UI prioritizes an existing saved invoice when deriving the workspace label. `Approved` and `Rejected` remain reserved backend enum values without implemented actions.
+The API now transitions unsaved documents through `Processing` to `ReviewRequired` or `Failed`, and invoice saves set `Saved`. Reanalysis preserves an already saved document's `Saved` status, and saving during extraction also takes precedence over the extraction's final document status. The run records its own result independently. The UI prioritizes an existing saved invoice when deriving the workspace label. `Approved` and `Rejected` remain reserved backend enum values without implemented actions.
 
 An extracted field requires a check when its confidence is absent or below `0.80`; exactly `0.80` does not trigger it. Missing fields are omitted from extraction results, so the form separately validates absent required values. A `Completed` run can contain no extracted fields.
 
@@ -99,7 +99,7 @@ The form maps typed `normalizedValue` data, including currency amount objects, a
 | Drafts and checks | Browser draft storage and explicit field acknowledgements | Server-persisted drafts, reviewer decisions, and an audit trail |
 | Export | Browser-generated CSV of loaded saved invoice headers | Line-item export or a server export endpoint if needed |
 
-The API has no authentication, approval/rejection workflow, or background worker. Do not infer live PostgreSQL/Azure integration success from the demo screenshots; verify those services in a configured environment using the [development checklist](development.md).
+The API enforces Google-backed sessions, pilot invitations, user ownership, and CSRF protection. Approval/rejection and background processing are not implemented. Do not infer live PostgreSQL/Azure integration success from the demo screenshots; verify those services in a configured environment using the [development checklist](development.md).
 
 ## Visual and responsive decisions
 
