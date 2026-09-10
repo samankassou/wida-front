@@ -32,7 +32,7 @@ export function getDemoItems(): WorkspaceItem[] {
     const source: InvoiceDraft = {
       supplierName: spec.name, supplierAddress: "24 Willow Street\nDesign district", supplierTaxId: "", invoiceNumber: spec.number,
       invoiceDate: spec.date, dueDate: spec.due, purchaseOrderNumber: `PO-2026-${104 + index}`, currency: spec.currency,
-      subtotalAmount: String(spec.amount), taxAmount: String(spec.tax), totalAmount: String(spec.amount + spec.tax),
+      shippingAmount: "", discountAmount: "", subtotalAmount: String(spec.amount), taxAmount: String(spec.tax), totalAmount: String(spec.amount + spec.tax),
       lines: [{ id: `line-${index}`, description: spec.description, quantity: "1", unitOfMeasure: "service", unitPrice: String(spec.amount), taxRate: String(spec.tax / spec.amount * 100), taxAmount: String(spec.tax), lineAmount: String(spec.amount) }],
     };
     const item: WorkspaceItem = {
@@ -42,7 +42,7 @@ export function getDemoItems(): WorkspaceItem[] {
     if (spec.stage !== "uploaded") item.latestRun = getDemoRun(item);
     if (spec.stage === "failed") item.latestRun = { ...item.latestRun!, status: "Failed", extractedFields: [], errorCode: "DOCUMENT_ANALYSIS_FAILED", errorMessage: "The scanned page could not be read clearly. Try extracting again, or enter the invoice details manually." };
     if (spec.stage === "saved") item.invoice = {
-      ...source, id: id(index + 101), documentId: item.document.id, subtotalAmount: spec.amount, taxAmount: spec.tax, totalAmount: spec.amount + spec.tax,
+      ...source, id: id(index + 101), documentId: item.document.id, shippingAmount: null, discountAmount: null, subtotalAmount: spec.amount, taxAmount: spec.tax, totalAmount: spec.amount + spec.tax,
       lines: [{ id: id(index + 201), lineNumber: 1, description: spec.description, quantity: 1, unitOfMeasure: "service", unitPrice: spec.amount, taxRate: spec.tax / spec.amount * 100, taxAmount: spec.tax, lineAmount: spec.amount }], createdAt: item.document.uploadedAt, updatedAt: item.document.uploadedAt,
     } as Invoice;
     return item;

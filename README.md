@@ -11,7 +11,7 @@ Wida is a document inbox and invoice review workspace built with Next.js, React,
 - Google sign-in for invited pilot users, personal document access, and sign-out in live mode.
 - Document inbox with search, status tabs, actionable counts, supplier/date sorting, currency and upload-date filters, selection, and client-side pagination.
 - Multiple-file upload with drag-and-drop or a file picker: up to 20 PDF, PNG, JPEG, or TIFF files at a time, each up to 20 MiB (shown as 20 MB in the interface).
-- Invoice review with original-document preview, confidence indicators, explicit checks for uncertain fields, manual line items, inline validation, and processing history.
+- Invoice review with original-document preview, confidence indicators, explicit checks for uncertain fields, extracted and editable line items, inline validation, and processing history.
 - Invoice creation and editing, draft recovery, review-next navigation, and CSV export of saved invoice headers.
 - Responsive navigation and review panels, light/dark preferences, and keyboard shortcuts: `/` to search, `U` to upload, and `?` for help.
 
@@ -125,7 +125,7 @@ The UI uses native HTML controls, custom styles, and `lucide-react` icons. shadc
 
 ## Current limits
 
-The API extracts seven header fields from the first analyzed document; line items remain manual. Live PDFs use the browser's PDF viewer. Field-to-source highlighting is demonstrated on sample invoices, but live extraction polygons are not drawn. Image and sample previews have custom zoom and rotation controls; PDF controls depend on the browser. TIFF preview support also depends on the browser.
+The API extracts eight header fields and line items from the first analyzed document. Extracted lines prefill the editable form; low or unknown confidence requires an explicit check before saving. Saved invoices and edited drafts retain their values. Live PDFs use the browser's PDF viewer. Field-to-source highlighting is demonstrated on sample invoices, but live extraction polygons are not drawn. Image and sample previews have custom zoom and rotation controls; PDF controls depend on the browser. TIFF preview support also depends on the browser.
 
 There is no background processing worker, approval/rejection workflow, or server-persisted draft and field-review audit trail. **Extraction completed**, **checked in the form**, and **invoice saved** are separate events. Live PostgreSQL, Azure, and Google end-to-end validation must be performed in a configured environment; screenshots of the demo do not establish that integration result.
 

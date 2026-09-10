@@ -161,3 +161,103 @@ test("new extraction preserves user edits but invalidates checks, including rest
   }
   assert.deepEqual(edited.checkedFields, ["invoiceNumber"], "Resolving must not mutate a stored draft");
 });
+
+
+test("extracts ordered partial lines, currency amounts, zeroes and percentage tax rates", () => {
+  const source = item();
+  source.latestRun.extractedFields.push(
+    field("Items[10].Description", "Last"), field("Items[2].Description", "First", 0.6),
+    field("Items[2].Quantity", 0), field("Items[2].Unit", "hours"),
+    field("Items[2].UnitPrice", { amount: 100, currencyCode: "EUR" }),
+    field("Items[2].TaxRate", "19,25 %"), field("Items[2].Tax", { amount: 0 }),
+    field("Items[2].Amount", { amount: 0 }), field("Items[1].Unsupported", "ignored"),
+  );
+  const draft = checkedDraft(source);
+  assert.equal(draft.values.lines.length, 2);
+  assert.deepEqual(draft.values.lines[0], { id: "extracted-line-2", description: "First", quantity: "0", unitOfMeasure: "hours", unitPrice: "100", taxRate: "19.25", taxAmount: "0", lineAmount: "0" });
+  assert.equal(draft.values.lines[1].description, "Last");
+  assert.equal(draft.values.lines[1].quantity, "");
+  assert.ok(validateDraft(draft, source)["lines.0.description"]);
+  draft.checkedFields.push("extracted-line-2.description");
+  assert.equal(validateDraft(draft, source)["lines.0.description"], undefined);
+  const payload = toInvoicePayload(draft.values, source.document.id);
+  assert.equal(payload.lines[0].taxRate, 19.25);
+  assert.equal(payload.lines[0].quantity, 0);
+  assert.equal(payload.lines[1].lineNumber, 2);
+});
+
+test("line checks follow stable row ids through deletion and reset on reanalysis", () => {
+  const source = item();
+  source.latestRun.extractedFields.push(field("Items[0].Description", "First", null), field("Items[1].Description", "Second", 0.5));
+  const draft = checkedDraft(source);
+  draft.checkedFields.push("extracted-line-0.description");
+  draft.values.lines.shift();
+  assert.ok(validateDraft(draft, source)["lines.0.description"]);
+  draft.checkedFields.push("extracted-line-1.description");
+  assert.equal(validateDraft(draft, source)["lines.0.description"], undefined);
+  source.latestRun.id = "new-run";
+  const resolved = resolveDraft(source, draft);
+  assert.equal(resolved.values.lines.length, 1);
+  assert.ok(validateDraft(resolved, source)["lines.0.description"]);
+  source.invoice = { ...toInvoicePayload(draft.values, source.document.id), id: "saved" };
+  const saved = createDraft(source);
+  assert.equal(saved.values.lines.length, 1);
+  assert.equal(saved.values.lines[0].description, "Second");
+  assert.equal(validateDraft(saved, source)["lines.0.description"], undefined);
+});
+
+
+test("shipping and discounts reconcile the actual invoice total and survive payload conversion", () => {
+  const source = item();
+  const draft = checkedDraft(source);
+  Object.assign(draft.values, { subtotalAmount: "3312.82", taxAmount: "0", shippingAmount: "50", discountAmount: "0", totalAmount: "3362.82" });
+  assert.deepEqual(validateDraft(draft, source), {});
+  draft.values.discountAmount = "12.82";
+  draft.values.totalAmount = "3350";
+  assert.deepEqual(validateDraft(draft, source), {});
+  const payload = toInvoicePayload(draft.values, source.document.id);
+  assert.equal(payload.shippingAmount, 50);
+  assert.equal(payload.discountAmount, 12.82);
+  source.invoice = payload;
+  assert.equal(createDraft(source).values.shippingAmount, "50");
+  draft.values.totalAmount = "3312.82";
+  assert.ok(validateDraft(draft, source).totalAmount);
+  draft.values.shippingAmount = "invalid";
+  assert.ok(validateDraft(draft, source).shippingAmount);
+});
+
+test("discount extraction retains review flags and legacy drafts get empty adjustments", () => {
+  const source = item();
+  source.latestRun.extractedFields.push(field("TotalDiscount", { amount: 10 }, 0.7));
+  const draft = createDraft(source);
+  assert.equal(draft.values.discountAmount, "10");
+  assert.ok(validateDraft(draft, source).discountAmount);
+  delete draft.values.shippingAmount;
+  delete draft.values.discountAmount;
+  const restored = resolveDraft(source, draft);
+  assert.equal(restored.values.shippingAmount, "");
+  assert.equal(restored.values.discountAmount, "");
+  assert.equal(restored.values.totalAmount, "1440");
+});
+
+
+test("net unit prices and tax-inclusive lines reconcile without changing source amounts", () => {
+  const source = item();
+  const draft = checkedDraft(source);
+  Object.assign(draft.values, { subtotalAmount: "1507.50", taxAmount: "150.75", totalAmount: "1658.25" });
+  draft.values.lines = [
+    { id: "a", description: "First", quantity: "5", unitPrice: "22.50", lineAmount: "123.75", taxRate: "10", taxAmount: "", unitOfMeasure: "each" },
+    { id: "b", description: "Second", quantity: "5", unitPrice: "279", lineAmount: "1534.50", taxRate: "10", taxAmount: "", unitOfMeasure: "each" },
+  ];
+  assert.deepEqual(validateDraft(draft, source), {});
+  assert.equal(toInvoicePayload(draft.values, source.document.id).lines[0].lineAmount, 123.75);
+  draft.values.lines[0].taxRate = "";
+  assert.ok(validateDraft(draft, source)["lines.0.lineAmount"]);
+  draft.values.lines[0].taxAmount = "11.25";
+  assert.deepEqual(validateDraft(draft, source), {});
+  draft.values.lines[0].taxRate = "20";
+  assert.ok(validateDraft(draft, source)["lines.0.lineAmount"]);
+  draft.values.lines[0].taxRate = "10";
+  draft.values.lines[0].lineAmount = "124";
+  assert.ok(validateDraft(draft, source)["lines.0.lineAmount"]);
+});

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, CheckCheck, ChevronDown, ChevronRight, CircleAlert, Clock3, FileText, History, Layers3, LoaderCircle, Plus, RotateCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import DocumentPreview from "./document-preview";
-import { createDraft, emptyLine, fieldLabels, fieldNeedsCheck, getExtractedCurrency, getExtractedField, numericValue, validateDraft, type HeaderField } from "@/lib/invoice-form";
+import { createDraft, emptyLine, fieldLabels, fieldNeedsCheck, getExtractedCurrency, getExtractedField, getExtractedLineField, lineCheckKey, taxInclusiveLineNet, numericValue, validateDraft, type HeaderField } from "@/lib/invoice-form";
 import type { ExtractedField, FieldErrors, InvoiceLineDraft, ProcessingRun, ReviewDraft, WorkspaceItem, WorkspaceMode } from "@/lib/types";
 import "./invoice-review.css";
 
@@ -48,7 +48,7 @@ interface FieldProps {
 function InvoiceField({ name, value, type = "text", required, placeholder, wide, origin, extracted, checked, error, showError, onChange, onCheck, onFocus, onBlur }: FieldProps) {
   const needsCheck = fieldNeedsCheck(extracted);
   const isAmount = name.endsWith("Amount");
-  const manual = ["currency", "supplierAddress", "supplierTaxId", "purchaseOrderNumber"].includes(name);
+  const manual = ["shippingAmount", "currency", "supplierAddress", "supplierTaxId", "purchaseOrderNumber"].includes(name);
   const id = `rv-field-${name}`;
   const invalid = Boolean(error && showError);
   const confidence = extracted?.confidence == null ? null : Math.round(extracted.confidence * 100);
@@ -98,7 +98,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
     onDraftChange({ values: { ...values, [name]: value }, checkedFields: draft.checkedFields.filter((field) => field !== name) });
   }
 
-  function checkField(name: HeaderField, checked: boolean) {
+  function checkField(name: string, checked: boolean) {
     onDraftChange({ ...draft, checkedFields: checked ? [...new Set([...draft.checkedFields, name])] : draft.checkedFields.filter((field) => field !== name) });
   }
 
@@ -142,7 +142,24 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
 
   function changeLine(index: number, field: keyof InvoiceLineDraft, value: string) {
     setFeedback("");
-    onDraftChange({ ...draft, values: { ...values, lines: values.lines.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line) } });
+    onDraftChange({ ...draft, checkedFields: draft.checkedFields.filter((key) => key !== `${values.lines[index].id}.${field}`), values: { ...values, lines: values.lines.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line) } });
+  }
+
+  function renderLineField(line: InvoiceLineDraft, index: number, key: Exclude<keyof InvoiceLineDraft, "id">, label: string, wide = false) {
+    const fieldKey = `lines.${index}.${key}`;
+    const extracted = getExtractedLineField(item, line, key);
+    const needsCheck = fieldNeedsCheck(extracted);
+    const checkKey = lineCheckKey(line, key);
+    const checked = draft.checkedFields.includes(checkKey);
+    const error = currentErrors[fieldKey];
+    const text = key === "description" || key === "unitOfMeasure";
+    return <div className={`rv-field ${wide ? "rv-field-wide" : ""} ${needsCheck && !checked ? "rv-field-review" : ""}`} key={key}>
+      <div className="rv-field-label"><label htmlFor={`rv-field-${fieldKey}`}>{label}</label>{extracted ? <span className={`rv-confidence ${needsCheck && !checked ? "rv-confidence-low" : ""}`}>{extracted.confidence == null ? "Check value" : `${Math.round(extracted.confidence * 100)}%`}</span> : null}</div>
+      <input id={`rv-field-${fieldKey}`} inputMode={text ? "text" : "decimal"} value={line[key]} onChange={(event) => changeLine(index, key, event.target.value)} aria-invalid={Boolean(error)} aria-describedby={[needsCheck ? `rv-check-${fieldKey}` : "", error ? `rv-error-${fieldKey}` : ""].filter(Boolean).join(" ") || undefined} />
+      {needsCheck ? <label className={`rv-field-check ${checked ? "rv-field-checked" : ""}`} id={`rv-check-${fieldKey}`}><input type="checkbox" checked={checked} onChange={(event) => checkField(checkKey, event.target.checked)} /><span>{checked ? "Checked against the original" : "I checked this value against the original"}</span></label> : null}
+      {key === "lineAmount" && taxInclusiveLineNet(line) !== null ? <p className="rv-confidence-note">Includes tax · Net amount: {taxInclusiveLineNet(line)!.toFixed(2)}. The subtotal check uses this net amount.</p> : null}
+      {error ? <p className="field-error" id={`rv-error-${fieldKey}`}>{error}</p> : null}
+    </div>;
   }
 
   function renderField(name: HeaderField, options: Partial<Pick<FieldProps, "wide" | "required" | "placeholder" | "type">> = {}) {
@@ -172,14 +189,15 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
                   {issueKeys.length ? <div className="rv-issue-banner"><div className="rv-issue-banner-icon"><CircleAlert size={17} /></div><div><strong>{issueKeys.length} {issueKeys.length === 1 ? "item needs" : "items need"} your attention</strong><p>Compare flagged values with the original.</p></div><button type="button" onClick={focusNextIssue} aria-label="Go to next issue"><ArrowRight size={17} /></button></div> : <div className="rv-checked-banner"><CheckCheck size={17} /><span>{item.invoice && !dirty ? "Invoice data saved" : "All checks complete. Ready to save."}</span></div>}
                   {!completed && !item.invoice ? <div className="rv-processing-note"><p>{mode === "demo" && !item.sample ? "This original is stored in your browser. Enter the invoice details below; automatic extraction is available with a connected API." : analyzing ? "Extraction is running. You can review the source while it finishes." : runFailed ? "Extraction failed. Try again, or enter the invoice details manually." : "Run extraction to fill the invoice fields, or enter them manually."}</p>{mode === "live" || item.sample ? <button type="button" className="button button-small" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <LoaderCircle size={14} className="rv-spin" /> : <RotateCw size={14} />}{analyzing ? "Extracting…" : runFailed ? "Retry extraction" : "Run extraction"}</button> : null}</div> : null}
                   <div className="rv-field-group"><div className="rv-group-heading"><span>INVOICE DETAILS</span><span>* Required</span></div><div className="rv-fields">{renderField("supplierName", { required: true, wide: true, placeholder: "Supplier or company name" })}{renderField("invoiceNumber", { required: true, wide: true, placeholder: "e.g. INV-2026-0137" })}{renderField("invoiceDate", { required: true, type: "date" })}{renderField("dueDate", { type: "date" })}</div></div>
-                  <div className="rv-field-group"><div className="rv-group-heading"><span>AMOUNTS</span><span>Use a decimal point</span></div><div className="rv-fields">{renderField("subtotalAmount", { placeholder: "0.00" })}{renderField("taxAmount", { placeholder: "0.00" })}{renderField("totalAmount", { required: true, placeholder: "0.00" })}{renderField("currency", { placeholder: "e.g. EUR" })}</div></div>
+                  <div className="rv-field-group"><div className="rv-group-heading"><span>AMOUNTS</span><span>Use a decimal point</span></div><div className="rv-fields">{renderField("subtotalAmount", { placeholder: "0.00" })}{renderField("taxAmount", { placeholder: "0.00" })}{renderField("shippingAmount", { placeholder: "0.00" })}{renderField("discountAmount", { placeholder: "0.00" })}{renderField("totalAmount", { required: true, placeholder: "0.00" })}{renderField("currency", { placeholder: "e.g. EUR" })}</div></div>
                   <details className="rv-additional"><summary><span>Additional details</span><span>Optional <ChevronDown size={14} /></span></summary><div className="rv-fields">{renderField("purchaseOrderNumber", { wide: true, placeholder: "Purchase order reference" })}{renderField("supplierTaxId", { wide: true, placeholder: "Supplier tax registration" })}{renderField("supplierAddress", { wide: true, placeholder: "Street, city, postal code and country" })}</div></details>
+                  <p className="rv-confidence-note">Enter shipping and discounts only if they are not already included in the subtotal. Blank adjustments count as zero.</p>
                   <p className="rv-confidence-note"><ShieldCheck size={13} />Percentages show the original extraction confidence. A checked value records your review in this workspace.</p>
                 </section>
 
                 <section role="tabpanel" id="rv-panel-lines" aria-labelledby="rv-tab-lines" hidden={tab !== "lines"}>
-                  <div className="rv-lines-heading"><div><h3>Line items</h3><p>Add items manually from the original.</p></div><button type="button" className="button button-small" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: [...values.lines, emptyLine(crypto.randomUUID())] } })}><Plus size={14} />Add line</button></div>
-                  {!values.lines.length ? <div className="rv-lines-empty"><div><Layers3 size={26} /></div><h3>No line items yet</h3><p>Line items are optional and aren’t extracted automatically. Add them when you need a detailed invoice record.</p><button type="button" className="button" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: [emptyLine(crypto.randomUUID())] } })}><Plus size={15} />Add first line</button></div> : <div className="rv-lines-list">{values.lines.map((line, index) => <div className="rv-line" key={line.id}><div className="rv-line-heading"><span>Item {index + 1}</span><button type="button" className="icon-button" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: values.lines.filter((_, lineIndex) => lineIndex !== index) } })} aria-label={`Remove line ${index + 1}`}><Trash2 size={15} /></button></div><div className="rv-fields">{([{ key: "description", label: "Description", wide: true }, { key: "quantity", label: "Quantity" }, { key: "unitPrice", label: "Unit price" }, { key: "lineAmount", label: "Line amount", wide: true }] as const).map(({ key, label, ...options }) => { const fieldKey = `lines.${index}.${key}`; return <div className={`rv-field ${"wide" in options && options.wide ? "rv-field-wide" : ""}`} key={key}><label htmlFor={`rv-field-${fieldKey}`}>{label}</label><input id={`rv-field-${fieldKey}`} inputMode={key === "description" ? "text" : "decimal"} value={line[key]} placeholder={key === "description" ? "Product or service" : "0.00"} onChange={(event) => changeLine(index, key, event.target.value)} aria-invalid={Boolean(currentErrors[fieldKey])} aria-describedby={currentErrors[fieldKey] ? `rv-error-${fieldKey}` : undefined} />{currentErrors[fieldKey] ? <p className="field-error" id={`rv-error-${fieldKey}`}>{currentErrors[fieldKey]}</p> : null}</div>; })}</div><details className="rv-line-extra"><summary>Tax and unit details</summary><div className="rv-fields">{([{ key: "unitOfMeasure", label: "Unit of measure" }, { key: "taxRate", label: "Tax rate (%)" }, { key: "taxAmount", label: "Tax amount" }] as const).map(({ key, label }) => { const fieldKey = `lines.${index}.${key}`; return <div className="rv-field" key={key}><label htmlFor={`rv-field-${fieldKey}`}>{label}</label><input id={`rv-field-${fieldKey}`} value={line[key]} inputMode={key === "unitOfMeasure" ? "text" : "decimal"} onChange={(event) => changeLine(index, key, event.target.value)} aria-invalid={Boolean(currentErrors[fieldKey])} aria-describedby={currentErrors[fieldKey] ? `rv-error-${fieldKey}` : undefined} />{currentErrors[fieldKey] ? <p className="field-error" id={`rv-error-${fieldKey}`}>{currentErrors[fieldKey]}</p> : null}</div>; })}</div></details></div>)}</div>}
+                  <div className="rv-lines-heading"><div><h3>Line items</h3><p>Review extracted items or add lines from the original.</p></div><button type="button" className="button button-small" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: [...values.lines, emptyLine(crypto.randomUUID())] } })}><Plus size={14} />Add line</button></div>
+                  {!values.lines.length ? <div className="rv-lines-empty"><div><Layers3 size={26} /></div><h3>No line items yet</h3><p>No line items were extracted. You can add them from the original.</p><button type="button" className="button" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: [emptyLine(crypto.randomUUID())] } })}><Plus size={15} />Add first line</button></div> : <div className="rv-lines-list">{values.lines.map((line, index) => <div className="rv-line" key={line.id}><div className="rv-line-heading"><span>Item {index + 1}</span><button type="button" className="icon-button" onClick={() => onDraftChange({ ...draft, values: { ...values, lines: values.lines.filter((_, lineIndex) => lineIndex !== index) } })} aria-label={`Remove line ${index + 1}`}><Trash2 size={15} /></button></div><div className="rv-fields">{renderLineField(line, index, "description", "Description", true)}{renderLineField(line, index, "quantity", "Quantity")}{renderLineField(line, index, "unitPrice", "Unit price")}{renderLineField(line, index, "lineAmount", "Line amount", true)}</div><details className="rv-line-extra"><summary>Tax and unit details</summary><div className="rv-fields">{renderLineField(line, index, "unitOfMeasure", "Unit of measure")}{renderLineField(line, index, "taxRate", "Tax rate (%)")}{renderLineField(line, index, "taxAmount", "Tax amount")}</div></details></div>)}</div>}
                   {values.lines.length ? <div className="rv-lines-total"><span>Sum of line amounts</span><strong>{values.lines.reduce((sum, line) => sum + (numericValue(line.lineAmount) ?? 0), 0).toFixed(2)} {values.currency.toUpperCase()}</strong></div> : null}
                 </section>
 

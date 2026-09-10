@@ -72,7 +72,7 @@ Client validation requires supplier name, invoice number, invoice date, and tota
 
 ## Extraction and manual fields
 
-The analyzer selects seven header fields from the first analyzed document:
+The analyzer selects eight header fields from the first analyzed document:
 
 | Extraction field | Invoice field |
 | --- | --- |
@@ -84,7 +84,7 @@ The analyzer selects seven header fields from the first analyzed document:
 | `TotalTax` | `taxAmount` |
 | `InvoiceTotal` | `totalAmount` |
 
-The form maps typed `normalizedValue` data, including currency amount objects, and falls back to raw text when available. Supplier address, tax ID, purchase order, and line items are entered manually. Currency can be taken from a returned currency object or entered by the user; the currencies shown in screenshots are fictional examples.
+The form maps typed `normalizedValue` data, including currency amount objects, and falls back to raw text when available. Supplier address, tax ID, and purchase order are entered manually. Line items prefill from indexed `Items` fields, sorted numerically by their original index. Description, quantity, unit, unit price, tax rate, tax amount, and amount remain editable. Percentage tax-rate strings are converted to numeric percentages; missing values stay blank. Line review checks follow stable row IDs when another row is removed and reset after reanalysis. Saved invoices take precedence over extraction, and edited drafts retain their values. Currency can be taken from a returned currency object or entered by the user; the currencies shown in screenshots are fictional examples.
 
 ## Current API support and remaining work
 
@@ -138,3 +138,7 @@ Open the [standalone concept](prototypes/invoice-workspace.html) in a browser to
 - [shadcn/ui Resizable](https://ui.shadcn.com/docs/components/base/resizable): an implementation reference for a future keyboard-operable divider.
 
 These references informed the interaction pattern; the Wida screenshots show original designs tailored to its workflow.
+
+Shipping and discount amounts are editable in the Amounts section. The total check includes shipping and subtracts discount; blank adjustments count as zero. Enter only adjustments not already included in the subtotal. Shipping is manual; discount prefills from `TotalDiscount` with the usual confidence checks. Older browser drafts receive blank adjustment fields without losing edits.
+
+Tax-inclusive line amounts with net unit prices are accepted when the line's tax amount or percentage reconciles the difference within 0.01. If both tax values are supplied, both must agree. Subtotal validation uses the net quantity × unit price for these lines; stored source amounts are unchanged. Lines without tax evidence retain the existing net-amount validation. The review form identifies recognized tax-inclusive amounts and shows the net amount used for the subtotal check.

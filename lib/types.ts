@@ -70,6 +70,8 @@ export interface Invoice {
   dueDate: string | null;
   purchaseOrderNumber: string | null;
   currency: string | null;
+  shippingAmount: number | null;
+  discountAmount: number | null;
   subtotalAmount: number | null;
   taxAmount: number | null;
   totalAmount: number | null;
@@ -98,6 +100,8 @@ export interface InvoiceDraft {
   dueDate: string;
   purchaseOrderNumber: string;
   currency: string;
+  shippingAmount: string;
+  discountAmount: string;
   subtotalAmount: string;
   taxAmount: string;
   totalAmount: string;

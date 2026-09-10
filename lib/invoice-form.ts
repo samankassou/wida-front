@@ -9,13 +9,50 @@ export const extractionFields = {
   dueDate: "DueDate",
   subtotalAmount: "SubTotal",
   taxAmount: "TotalTax",
+  discountAmount: "TotalDiscount",
   totalAmount: "InvoiceTotal",
 } as const;
+
+export const lineExtractionFields = {
+  description: "Description", quantity: "Quantity", unitOfMeasure: "Unit", unitPrice: "UnitPrice",
+  taxRate: "TaxRate", taxAmount: "Tax", lineAmount: "Amount",
+} as const;
+
+type LineField = keyof typeof lineExtractionFields;
+
+export function getExtractedLineField(item: WorkspaceItem, line: InvoiceLineDraft, field: LineField): ExtractedField | undefined {
+  if (item.invoice || !line.id.startsWith("extracted-line-")) return undefined;
+  const index = line.id.slice("extracted-line-".length);
+  return item.latestRun?.extractedFields.find((entry) => entry.fieldName === `Items[${index}].${lineExtractionFields[field]}`);
+}
+
+export function lineCheckKey(line: InvoiceLineDraft, field: LineField): string {
+  return `${line.id}.${field}`;
+}
+
+function extractedLines(item: WorkspaceItem): InvoiceLineDraft[] {
+  const lines = new Map<number, InvoiceLineDraft>();
+  for (const field of item.latestRun?.extractedFields ?? []) {
+    const match = /^Items\[(\d+)\]\.(\w+)$/.exec(field.fieldName);
+    if (!match) continue;
+    const key = (Object.keys(lineExtractionFields) as LineField[]).find((key) => lineExtractionFields[key] === match[2]);
+    if (!key) continue;
+    const index = Number(match[1]);
+    const line = lines.get(index) ?? emptyLine(`extracted-line-${index}`);
+    const value = extractedValue(field);
+    // Azure returns tax rates as strings, e.g. "18 %" or "19,25 %".
+    line[key] = key === "taxRate" && /^-?\d+(?:[.,]\d+)?\s*%$/.test(value.trim())
+      ? value.trim().replace(/\s*%$/, "").replace(",", ".") : value;
+    lines.set(index, line);
+  }
+  return [...lines].sort(([first], [second]) => first - second).map(([, line]) => line);
+}
 
 export const fieldLabels: Record<HeaderField, string> = {
   supplierName: "Supplier name", supplierAddress: "Supplier address", supplierTaxId: "Supplier tax ID",
   invoiceNumber: "Invoice number", invoiceDate: "Invoice date", dueDate: "Due date",
   purchaseOrderNumber: "Purchase order", currency: "Currency", subtotalAmount: "Subtotal",
+  shippingAmount: "Shipping amount", discountAmount: "Discount amount",
   taxAmount: "Tax amount", totalAmount: "Total amount",
 };
 
@@ -50,7 +87,7 @@ function extractedValue(field: ExtractedField | undefined): string {
 export function createDraft(item: WorkspaceItem): ReviewDraft {
   const values: InvoiceDraft = {
     supplierName: "", supplierAddress: "", supplierTaxId: "", invoiceNumber: "", invoiceDate: "", dueDate: "",
-    purchaseOrderNumber: "", currency: "", subtotalAmount: "", taxAmount: "", totalAmount: "", lines: [],
+    purchaseOrderNumber: "", currency: "", shippingAmount: "", discountAmount: "", subtotalAmount: "", taxAmount: "", totalAmount: "", lines: [],
   };
   if (item.invoice) {
     for (const key of Object.keys(values) as (keyof InvoiceDraft)[]) {
@@ -69,12 +106,17 @@ export function createDraft(item: WorkspaceItem): ReviewDraft {
     if ((key === "invoiceDate" || key === "dueDate") && /^\d{4}-\d{2}-\d{2}/.test(values[key])) values[key] = values[key].slice(0, 10);
   }
   values.currency = getExtractedCurrency(item);
+  values.lines = extractedLines(item);
   return { values, checkedFields: [], extractionRunId: item.latestRun?.id ?? null };
 }
 
 // Only user edits are cached. Untouched forms always follow the latest extraction.
 export function resolveDraft(item: WorkspaceItem, edited?: ReviewDraft): ReviewDraft {
   if (!edited) return createDraft(item);
+  // Older cached drafts predate these optional adjustments. Preserve all edits.
+  if (edited.values.shippingAmount === undefined || edited.values.discountAmount === undefined) {
+    edited = { ...edited, values: { ...edited.values, shippingAmount: edited.values.shippingAmount ?? "", discountAmount: edited.values.discountAmount ?? "" } };
+  }
   const extractionRunId = item.latestRun?.id ?? null;
   return edited.extractionRunId === extractionRunId
     ? edited
@@ -83,7 +125,7 @@ export function resolveDraft(item: WorkspaceItem, edited?: ReviewDraft): ReviewD
 
 const numericPattern = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;
 export function numericValue(value: string): number | null {
-  const clean = value.trim();
+  const clean = (value ?? "").trim();
   if (!clean || !numericPattern.test(clean)) return null;
   const parsed = Number(clean);
   return Number.isFinite(parsed) ? parsed : null;
@@ -99,6 +141,23 @@ function amountMatches(first: number, second: number): boolean {
   return Math.abs(first - second) <= 0.01 + 1e-8;
 }
 
+// Preserve the source amount; use the net base only when supplied tax explains the difference.
+export function taxInclusiveLineNet(line: InvoiceLineDraft): number | null {
+  const quantity = numericValue(line.quantity);
+  const price = numericValue(line.unitPrice);
+  const amount = numericValue(line.lineAmount);
+  if (quantity === null || price === null || amount === null) return null;
+  const net = quantity * price;
+  if (!Number.isFinite(net) || amountMatches(net, amount)) return null;
+  const tax = numericValue(line.taxAmount);
+  const rate = numericValue(line.taxRate);
+  if ((line.taxAmount.trim() && tax === null) || (line.taxRate.trim() && rate === null)) return null;
+  if (tax === null && rate === null) return null;
+  if (tax !== null && !amountMatches(net + tax, amount)) return null;
+  if (rate !== null && !amountMatches(net + net * rate / 100, amount)) return null;
+  return net;
+}
+
 export function validateDraft(draft: ReviewDraft, item: WorkspaceItem): FieldErrors {
   const errors: FieldErrors = {};
   const values = draft.values;
@@ -111,28 +170,36 @@ export function validateDraft(draft: ReviewDraft, item: WorkspaceItem): FieldErr
   if (isValidDate(values.invoiceDate) && isValidDate(values.dueDate) && values.dueDate < values.invoiceDate) {
     errors.dueDate = "Due date cannot be before the invoice date.";
   }
-  for (const field of ["subtotalAmount", "taxAmount", "totalAmount"] as const) {
-    if (values[field].trim() && numericValue(values[field]) === null) errors[field] = "Enter an amount using a decimal point, for example 1200.00.";
+  for (const field of ["subtotalAmount", "taxAmount", "shippingAmount", "discountAmount", "totalAmount"] as const) {
+    if ((values[field] ?? "").trim() && numericValue(values[field]) === null) errors[field] = "Enter an amount using a decimal point, for example 1200.00.";
   }
   if (values.currency.trim() && !/^[a-zA-Z]{3}$/.test(values.currency.trim())) errors.currency = "Use a three-letter currency code, such as EUR or XAF.";
   const subtotal = numericValue(values.subtotalAmount);
   const tax = numericValue(values.taxAmount);
   const total = numericValue(values.totalAmount);
-  if (subtotal !== null && tax !== null && total !== null && !amountMatches(subtotal + tax, total)) {
-    errors.totalAmount = `Subtotal + tax equals ${(subtotal + tax).toFixed(2)}. Check the total against the document.`;
+  const shipping = numericValue(values.shippingAmount) ?? 0;
+  const discount = numericValue(values.discountAmount) ?? 0;
+  const expectedTotal = (subtotal ?? 0) + (tax ?? 0) + shipping - discount;
+  if (subtotal !== null && tax !== null && total !== null && !errors.shippingAmount && !errors.discountAmount && !amountMatches(expectedTotal, total)) {
+    errors.totalAmount = `Subtotal + tax + shipping − discount equals ${expectedTotal.toFixed(2)}. Check shipping and discounts against the document.`;
   }
   values.lines.forEach((line, index) => {
+    for (const field of Object.keys(lineExtractionFields) as LineField[]) {
+      if (fieldNeedsCheck(getExtractedLineField(item, line, field)) && !draft.checkedFields.includes(lineCheckKey(line, field))) {
+        errors[`lines.${index}.${field}`] = "Check this value against the original document and mark it checked.";
+      }
+    }
     for (const field of ["quantity", "unitPrice", "taxRate", "taxAmount", "lineAmount"] as const) {
       if (line[field].trim() && numericValue(line[field]) === null) errors[`lines.${index}.${field}`] = "Enter a valid number using a decimal point.";
     }
     const quantity = numericValue(line.quantity);
     const unitPrice = numericValue(line.unitPrice);
     const amount = numericValue(line.lineAmount);
-    if (quantity !== null && unitPrice !== null && amount !== null && !amountMatches(quantity * unitPrice, amount)) {
-      errors[`lines.${index}.lineAmount`] = `Quantity × unit price equals ${(quantity * unitPrice).toFixed(2)}.`;
+    if (quantity !== null && unitPrice !== null && amount !== null && !amountMatches(quantity * unitPrice, amount) && taxInclusiveLineNet(line) === null) {
+      errors[`lines.${index}.lineAmount`] = `Quantity × unit price equals ${(quantity * unitPrice).toFixed(2)}. The line amount must match this or include the specified tax.`;
     }
   });
-  const lineAmounts = values.lines.map((line) => numericValue(line.lineAmount));
+  const lineAmounts = values.lines.map((line) => taxInclusiveLineNet(line) ?? numericValue(line.lineAmount));
   if (subtotal !== null && lineAmounts.length > 0 && lineAmounts.every((amount) => amount !== null)) {
     const lineTotal = lineAmounts.reduce<number>((sum, amount) => sum + (amount ?? 0), 0);
     if (!amountMatches(lineTotal, subtotal)) errors.subtotalAmount = `Line items total ${lineTotal.toFixed(2)}. Check the subtotal.`;
@@ -153,6 +220,7 @@ export function toInvoicePayload(values: InvoiceDraft, documentId: string) {
     supplierName: optionalText(values.supplierName), supplierAddress: optionalText(values.supplierAddress), supplierTaxId: optionalText(values.supplierTaxId),
     invoiceNumber: optionalText(values.invoiceNumber), invoiceDate: optionalText(values.invoiceDate), dueDate: optionalText(values.dueDate),
     purchaseOrderNumber: optionalText(values.purchaseOrderNumber), currency: optionalText(values.currency)?.toUpperCase() ?? null,
+    shippingAmount: numericValue(values.shippingAmount), discountAmount: numericValue(values.discountAmount),
     subtotalAmount: numericValue(values.subtotalAmount), taxAmount: numericValue(values.taxAmount), totalAmount: numericValue(values.totalAmount),
     lines: values.lines.map((line, index) => ({
       lineNumber: index + 1, description: optionalText(line.description), quantity: numericValue(line.quantity),
