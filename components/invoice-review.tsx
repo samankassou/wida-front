@@ -160,7 +160,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
       <div className={`rv-split rv-mobile-${mobilePanel}`}>
         <div className="rv-original-panel"><DocumentPreview key={item.document.id} item={item} sourceUrl={sourceUrl} activeField={activeField} onFieldSelect={focusIssue} /></div>
         <section className="rv-data-panel" aria-label="Invoice review form">
-          <div className="rv-data-panel-header"><div><h2>Invoice data</h2><p>{item.invoice ? "Saved record · edit to make a correction" : "Review the extraction before saving"}</p></div><span className="rv-extraction-icon"><ScanExtractionIcon /></span></div>
+          <div className="rv-data-panel-header"><div><h2>Invoice data</h2><p>{item.invoice ? "Saved record · edit to make a correction" : "Review the extraction before saving"}</p></div><span className="rv-extraction-icon"><ShieldCheck size={20} aria-hidden="true" /></span></div>
           <div className="rv-tablist" role="tablist" aria-label="Invoice information">{([{ id: "details", label: "Details", icon: FileText }, { id: "lines", label: "Line items", icon: Layers3 }, { id: "history", label: "History", icon: History }] as const).map(({ id, label, icon: Icon }) => <button type="button" role="tab" key={id} id={`rv-tab-${id}`} aria-selected={tab === id} aria-controls={`rv-panel-${id}`} onClick={() => setTab(id)} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); const tabs: Tab[] = ["details", "lines", "history"]; const next = tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : 2)) % 3]; setTab(next); root.current?.querySelector<HTMLButtonElement>(`#rv-tab-${next}`)?.focus(); } }}><Icon size={14} aria-hidden="true" />{label}{id === "lines" && values.lines.length > 0 ? <span>{values.lines.length}</span> : null}</button>)}</div>
 
           <form noValidate onSubmit={save} className="rv-form">
@@ -195,8 +195,4 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
       </div>
     </div>
   );
-}
-
-function ScanExtractionIcon() {
-  return <ShieldCheck size={20} aria-hidden="true" />;
 }

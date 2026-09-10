@@ -62,14 +62,23 @@ export function createDraft(item: WorkspaceItem): ReviewDraft {
       taxRate: line.taxRate == null ? "" : String(line.taxRate), taxAmount: line.taxAmount == null ? "" : String(line.taxAmount),
       lineAmount: line.lineAmount == null ? "" : String(line.lineAmount),
     }));
-    return { values, checkedFields: Object.keys(extractionFields) };
+    return { values, checkedFields: Object.keys(extractionFields), extractionRunId: item.latestRun?.id ?? null };
   }
   for (const key of Object.keys(extractionFields) as (keyof typeof extractionFields)[]) {
     values[key] = extractedValue(getExtractedField(item, key));
     if ((key === "invoiceDate" || key === "dueDate") && /^\d{4}-\d{2}-\d{2}/.test(values[key])) values[key] = values[key].slice(0, 10);
   }
   values.currency = getExtractedCurrency(item);
-  return { values, checkedFields: [] };
+  return { values, checkedFields: [], extractionRunId: item.latestRun?.id ?? null };
+}
+
+// Only user edits are cached. Untouched forms always follow the latest extraction.
+export function resolveDraft(item: WorkspaceItem, edited?: ReviewDraft): ReviewDraft {
+  if (!edited) return createDraft(item);
+  const extractionRunId = item.latestRun?.id ?? null;
+  return edited.extractionRunId === extractionRunId
+    ? edited
+    : { ...edited, checkedFields: [], extractionRunId };
 }
 
 const numericPattern = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;

@@ -86,3 +86,9 @@ Drafts are browser recovery data, not a shared review log. Live drafts are scope
 | Draft appears after reopening | This is browser draft recovery. Saving removes the draft; clearing site/session storage removes unsaved browser data. |
 
 Further browser checks confirmed invoice-number search, no-results recovery, USD filtering, selected-invoice CSV export feedback, and Next document navigation from Atelier North through Studio Fern to Northstar Logistics.
+
+### Drafts and extraction retries
+
+`useReviewDrafts` owns edited drafts and browser-storage failures. Untouched forms derive their values from the current workspace item, so retries cannot leave a cached empty form behind. Edited drafts retain their values; review checkmarks are associated with an extraction run and reset when that run changes. Legacy drafts without a run ID also require review again.
+
+Verified in the demo browser on 2026-09-10: retry a failed extraction, edit a supplier, run extraction again, reload the page, and save the recovered draft. Automated form tests cover replacement extraction values and invalidation of checks on current, restored, and legacy drafts.

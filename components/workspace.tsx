@@ -7,11 +7,12 @@ import { ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, Ch
 import * as api from "@/lib/api";
 import { getDemoItems, getDemoRun } from "@/lib/demo-data";
 import { amountOf, currencyOf, dateLabel, money, numberOf, stageLabels, stageOf, supplierOf } from "@/lib/format";
-import { createDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-form";
-import { getDocumentFile, hasLiveDrafts, loadDraft, loadWorkspace, putDocumentFile, removeDraft, saveDraft, saveWorkspace } from "@/lib/storage";
+import { resolveDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-form";
+import { getDocumentFile, hasLiveDrafts, loadWorkspace, putDocumentFile, saveWorkspace } from "@/lib/storage";
 import { mergeAnalysisResult, mergeInvoiceResult, nextReviewItem } from "@/lib/workspace-state";
 import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, SessionUser, WorkspaceItem, WorkspaceMode } from "@/lib/types";
 import UploadDialog from "./upload-dialog";
+import { useReviewDrafts } from "./use-review-drafts";
 
 const InvoiceReview = dynamic(() => import("./invoice-review"), { loading: () => <div className="review-loading"><LoaderCircle className="spin" /><p>Opening your document…</p></div> });
 const demoItems = getDemoItems();
@@ -39,7 +40,6 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const currentDocumentId = useRef(selectedId);
   const workspaceRevision = useRef(0);
   const workspaceStorageFailed = useRef(false);
-  const failedDrafts = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -56,8 +56,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const [panel, setPanel] = useState<Panel>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
-  const draftsRef = useRef<Record<string, ReviewDraft>>({});
+  const { drafts, restoreDraft, storeDraft, discardDraft, hasFailedDrafts } = useReviewDrafts(mode, userId);
   const activeSaves = useRef(new Set<string>());
   const activeAnalyses = useRef(new Set<string>());
   const [savingDocuments, setSavingDocuments] = useState<Set<string>>(() => new Set());
@@ -66,7 +65,8 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const analyzing = selectedId !== null && analyzingDocuments.has(selectedId);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
-  const [storageWarning, setStorageWarning] = useState(false);
+  const [workspaceStorageWarning, setWorkspaceStorageWarning] = useState(false);
+  const storageWarning = workspaceStorageWarning || hasFailedDrafts;
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [runs, setRuns] = useState<ProcessingRun[]>([]);
   const [theme, setTheme] = useState("light");
@@ -75,12 +75,8 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const filterPopover = useRef<HTMLDetailsElement>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   const item = items.find(row => row.document.id === selectedId);
-  const draft = item ? drafts[item.document.id] ?? createDraft(item) : null;
+  const draft = item ? resolveDraft(item, drafts[item.document.id]) : null;
   const notify = useCallback((message: string) => setToast(message), [setToast]);
-  const rememberDraft = useCallback((id: string, value: ReviewDraft) => {
-    draftsRef.current = { ...draftsRef.current, [id]: value };
-    setDrafts(draftsRef.current);
-  }, [setDrafts]);
   useEffect(() => { currentDocumentId.current = selectedId; }, [selectedId]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(""), 4500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
@@ -100,8 +96,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     Promise.resolve().then(async () => {
       if (!active) return;
       setRuns([]); setSourceUrl(null); setSaveError(null); setServerErrors({});
-      const restored = loadDraft(selectedId, mode, userId);
-      if (restored && !draftsRef.current[selectedId]) rememberDraft(selectedId, restored);
+      restoreDraft(selectedId);
       if (mode === "live") {
         if (active) setSourceUrl(`/api/wida/documents/${encodeURIComponent(selectedId)}/content`);
         try { const result = await client.fetchRuns(selectedId); if (active) setRuns(result); }
@@ -112,7 +107,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       }
     });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [selectedId, mode, userId, client, notify, rememberDraft]);
+  }, [selectedId, mode, userId, client, notify, restoreDraft]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -135,16 +130,10 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     const preventLoss = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", preventLoss); return () => window.removeEventListener("beforeunload", preventLoss);
   }, [storageWarning]);
-  function updateStorageWarning() { setStorageWarning(workspaceStorageFailed.current || failedDrafts.current.size > 0); }
-  function storeDraft(id: string, value: ReviewDraft) {
-    rememberDraft(id, value);
-    if (saveDraft(id, mode, value, userId)) failedDrafts.current.delete(id); else failedDrafts.current.add(id);
-    updateStorageWarning();
-  }
   function persist(records: WorkspaceItem[], requireDurable = false): boolean {
     const persisted = mode !== "demo" || saveWorkspace(records);
     workspaceStorageFailed.current = !persisted;
-    updateStorageWarning();
+    setWorkspaceStorageWarning(!persisted);
     // A failed invoice save must remain an editable draft, without a Saved badge.
     if (!persisted && requireDurable) return false;
     workspaceRevision.current++;
@@ -189,7 +178,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       notify("Finish the current operation and close the upload dialog before signing out.");
       return;
     }
-    if ((hasLiveDrafts(userId) || failedDrafts.current.size > 0) && !window.confirm("Sign out and remove this tab’s unsaved drafts? Save your invoices first if you want to keep these changes.")) return;
+    if ((hasLiveDrafts(userId) || hasFailedDrafts) && !window.confirm("Sign out and remove this tab’s unsaved drafts? Save your invoices first if you want to keep these changes.")) return;
     setLoggingOut(true);
     try { await onLogout(); }
     catch (cause) { notify(cause instanceof Error ? cause.message : "Sign out failed. Please try again."); }
@@ -197,7 +186,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   }
   function changeDraft(updated: ReviewDraft) {
     if (!item) return;
-    storeDraft(item.document.id, updated);
+    storeDraft(item, updated);
     setSaveError(null); setServerErrors({});
   }
   async function onSave(updated: ReviewDraft) {
@@ -207,16 +196,14 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     const errors = validateDraft(updated, item);
     if (Object.keys(errors).length) { setServerErrors(errors); throw new Error("Please check the highlighted fields."); }
     activeSaves.current.add(documentId); setSavingDocuments(new Set(activeSaves.current));
-    storeDraft(documentId, updated);
+    storeDraft(item, updated);
     setSaveError(null); setServerErrors({});
     try {
       const payload = toInvoicePayload(updated.values, documentId);
       const invoice: Invoice = mode === "live" ? await client.saveInvoice(payload, item.invoice?.id) : { ...payload, id: item.invoice?.id ?? crypto.randomUUID(), createdAt: item.invoice?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString() };
       const records = mergeInvoiceResult(itemsRef.current, documentId, invoice);
       if (!persist(records, true)) throw new Error("This browser could not save the invoice. Your draft has been kept. Free some browser storage, then try Save again.");
-      const savedItem = records.find(row => row.document.id === documentId);
-      if (savedItem) rememberDraft(documentId, createDraft(savedItem));
-      removeDraft(documentId, mode, userId); failedDrafts.current.delete(documentId); updateStorageWarning();
+      discardDraft(documentId);
       notify(currentDocumentId.current === documentId ? item.invoice ? "Invoice changes saved." : "Invoice saved. One less thing on your list." : `${item.document.originalFileName}: invoice saved.`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "The invoice could not be saved. Your draft has been kept.";
@@ -233,11 +220,9 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     if (mode === "demo" && !item.sample) { notify("This file is stored locally. Enter the invoice details manually, or connect the API to extract them."); return; }
     activeAnalyses.current.add(documentId); setAnalyzingDocuments(new Set(activeAnalyses.current)); setSaveError(null);
     try {
-      const run = mode === "demo" ? getDemoRun(item) : await client.analyzeDocument(documentId);
+      const run = mode === "demo" ? { ...getDemoRun(item), id: crypto.randomUUID() } : await client.analyzeDocument(documentId);
       const records = mergeAnalysisResult(itemsRef.current, documentId, run);
       persist(records);
-      const updated = records.find(row => row.document.id === documentId);
-      if (updated && !draftsRef.current[documentId] && !loadDraft(documentId, mode, userId)) rememberDraft(documentId, createDraft(updated));
       if (currentDocumentId.current === documentId) {
         setRuns(previous => [run, ...previous.filter(existing => existing.documentId === documentId && existing.id !== run.id)]);
         notify(run.status === "Failed" ? "Extraction failed. You can retry or enter the details manually." : "Extraction finished. Your document is ready to review.");

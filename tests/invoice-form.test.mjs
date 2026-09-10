@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDraft, fieldNeedsCheck, getExtractedCurrency, numericValue, toInvoicePayload, validateDraft } from "../lib/invoice-form.ts";
+import { createDraft, fieldNeedsCheck, getExtractedCurrency, numericValue, resolveDraft, toInvoicePayload, validateDraft } from "../lib/invoice-form.ts";
 
 const field = (fieldName, normalizedValue, confidence = 0.98) => ({
   id: fieldName, fieldName, normalizedValue, confidence, rawValue: null,
@@ -133,4 +133,31 @@ test("saved invoices initialize from the saved record and retain reviewed extrac
   assert.equal(draft.values.invoiceNumber, "CORRECTED-0137");
   assert.ok(draft.checkedFields.includes("invoiceNumber"));
   assert.deepEqual(validateDraft(draft, source), {});
+});
+
+
+test("untouched forms follow a successful retry and subsequent extraction results", () => {
+  const source = item();
+  source.latestRun = { ...source.latestRun, id: "failed-run", status: "Failed", extractedFields: [] };
+  assert.equal(resolveDraft(source).values.supplierName, "");
+  source.latestRun = item().latestRun;
+  assert.equal(resolveDraft(source).values.supplierName, "Atelier North");
+  source.latestRun = { ...source.latestRun, id: "new-run", extractedFields: [field("VendorName", "New supplier")] };
+  assert.equal(resolveDraft(source).values.supplierName, "New supplier");
+});
+
+test("new extraction preserves user edits but invalidates checks, including restored drafts", () => {
+  const source = item();
+  const edited = checkedDraft(source);
+  edited.values.supplierName = "User correction";
+  assert.equal(resolveDraft(source, edited), edited);
+  source.latestRun = { ...source.latestRun, id: "replacement-run" };
+  for (const draft of [edited, JSON.parse(JSON.stringify(edited)), { values: edited.values, checkedFields: edited.checkedFields }]) {
+    const resolved = resolveDraft(source, draft);
+    assert.equal(resolved.values.supplierName, "User correction");
+    assert.deepEqual(resolved.checkedFields, []);
+    assert.equal(resolved.extractionRunId, "replacement-run");
+    assert.ok(validateDraft(resolved, source).invoiceNumber);
+  }
+  assert.deepEqual(edited.checkedFields, ["invoiceNumber"], "Resolving must not mutate a stored draft");
 });
