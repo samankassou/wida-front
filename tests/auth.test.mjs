@@ -173,3 +173,13 @@ test("same-owner session renewal uses the refreshed CSRF token without aborting 
     assert.equal(changed.controller.signal.aborted, false);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test("role changes refresh the same user's UI without cancelling work", () => {
+  const controller = new AbortController();
+  const previous = { authenticated: true, googleConfigured: true, csrfToken: "token", controller, user: { id: "u", email: "user@example.com", displayName: "User", role: "User" } };
+  const latest = { ...previous, user: { ...previous.user, role: "Admin" } };
+  const refreshed = refreshActiveSession(previous, latest);
+  assert.equal(refreshed.user.role, "Admin");
+  assert.equal(refreshed.controller, controller);
+  assert.equal(controller.signal.aborted, false);
+});

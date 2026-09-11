@@ -324,3 +324,7 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); 
 @media (prefers-reduced-motion: reduce) { .spin, .rv-spin { animation: none !important; } }
 
 .workspace .processing-request-warning { padding: 0 20px 14px; font-size: 12px; line-height: 1.6; color: var(--amber); }
+
+.trial-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.trial-banner p { font-size: 12px; margin: 6px 0 0; }
+.trial-banner .button { flex-shrink: 0; }

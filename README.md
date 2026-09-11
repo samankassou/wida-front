@@ -8,9 +8,9 @@ Wida is a document inbox and invoice review workspace built with Next.js, React,
 
 ## What works
 
-- Google sign-in for invited pilot users, personal document access, and sign-out in live mode.
+- Google sign-in for public beta users, personal document access, and sign-out in live mode.
 - Document inbox with search, status tabs, actionable counts, supplier/date sorting, currency and upload-date filters, selection, and client-side pagination.
-- Multiple-file upload with drag-and-drop or a file picker: up to 20 PDF, PNG, JPEG, or TIFF files at a time, each up to 20 MiB (shown as 20 MB in the interface).
+- Multiple-file upload with drag-and-drop or a file picker: up to 20 PDF, PNG, JPEG, or TIFF files at a time, each up to 4 MiB and at most two pages.
 - Invoice review with original-document preview, confidence indicators, explicit checks for uncertain fields, extracted and editable line items, inline validation, and processing history.
 - Invoice creation and editing, draft recovery, review-next navigation, and CSV export of saved invoice headers.
 - Responsive navigation and review panels, light/dark preferences, and keyboard shortcuts: `/` to search, `U` to upload, and `?` for help.
@@ -53,7 +53,7 @@ WIDA_API_URL=http://localhost:5085
 WIDA_PUBLIC_ORIGIN=http://localhost:3000
 ```
 
-Restart the frontend server. The live workspace requires Google sign-in with an invited account. Configure the Google client credentials, pilot invitations, and `Authentication:PublicOrigin` in the API as described in its README. Register `http://localhost:3000/api/wida/auth/callback` as the Google OAuth redirect URI for local development. Credentials belong only in the backend's secrets; no Google client secret is configured in Next.js. If Google is not configured, Wida shows a configuration message and keeps document access protected.
+Restart the frontend server. The live workspace requires Google sign-in with a verified account. Configure the Google client credentials, the public beta setting, and `Authentication:PublicOrigin` in the API as described in its README. Register `http://localhost:3000/api/wida/auth/callback` as the Google OAuth redirect URI for local development. Credentials belong only in the backend's secrets; no Google client secret is configured in Next.js. If Google is not configured, Wida shows a configuration message and keeps document access protected.
 
 `WIDA_PUBLIC_ORIGIN` is the public frontend origin and must equal the API's `Authentication:PublicOrigin`. It is required for live production and should use HTTPS on a shared deployment. For a different local frontend port, update these two values and the Google redirect URI together.
 
@@ -67,7 +67,7 @@ The proxy permits the controlled Google login/callback redirects and refuses red
 
 | Behavior | Demo | Live API |
 | --- | --- | --- |
-| Access | No account needed | Google account invited to the pilot |
+| Access | No account needed | Verified Google account |
 | Starting data | Eight fictional documents | Latest 500 documents from the workspace endpoint |
 | Original files | Generated sample illustrations; user uploads in IndexedDB | Backend file-content endpoint |
 | Extraction | Seeded sample results; new uploads use manual entry | Explicit analysis request, optionally after upload |
@@ -144,3 +144,9 @@ This project is licensed under the [MIT Licence](LICENSE).
 ## Background analysis
 
 Connected analysis requests return immediately with a queued run. The workspace polls known active analyses every three seconds (ten seconds after retrieval errors), restores their state after reload, and preserves invoice edits when results arrive. Queued/running documents cannot be submitted again from the review screen. Queue capacity is enforced by the API; upload remains saved when analysis admission fails. Initialize the API database before starting the application. See [queue operations](../wida-api/docs/processing-queue.md).
+
+## Public beta
+
+`/demo` is always available without authentication, including when `WIDA_API_URL` is set. The connected workspace displays the lifetime page balance and accepts requests for additional credits. Files are limited to 2 pages/4 MiB; the API enforces all quotas. See the API public-beta guide for migration and operator commands.
+
+The workspace displays the authenticated profile. Administrators see “Sans quota Wida” and have no frontend upload quota or credit prompt. Authorization and exemptions are enforced by the API.

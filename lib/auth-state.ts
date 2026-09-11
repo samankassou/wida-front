@@ -6,7 +6,8 @@ export function refreshActiveSession(previous: ActiveSession | null, latest: Aut
   if (previous?.authenticated && latest.authenticated && previous.user && latest.user && previous.user.id === latest.user.id && !previous.controller.signal.aborted) {
     // Keep in-flight work and the current user's workspace when only the
     // antiforgery token changes (for example after its cookie is renewed).
-    return previous.csrfToken === latest.csrfToken ? previous : { ...previous, csrfToken: latest.csrfToken };
+    return previous.csrfToken === latest.csrfToken && previous.user.role === latest.user.role && previous.user.displayName === latest.user.displayName && previous.user.email === latest.user.email
+      ? previous : { ...previous, csrfToken: latest.csrfToken, user: latest.user };
   }
   previous?.controller.abort();
   return { ...latest, controller: new AbortController() };

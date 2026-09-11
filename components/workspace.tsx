@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bell, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
@@ -11,6 +11,7 @@ import { resolveDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-for
 import { getDocumentFile, hasLiveDrafts, loadWorkspace, putDocumentFile, saveWorkspace } from "@/lib/storage";
 import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, nextReviewItem } from "@/lib/workspace-state";
 import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, SessionUser, WorkspaceItem, WorkspaceMode } from "@/lib/types";
+import TrialBanner from "./trial-banner";
 import UploadDialog from "./upload-dialog";
 import AnalysisActivity from "./analysis-activity";
 import { analysisLabel, analysisRequestMessage, type UploadResult } from "@/lib/processing";
@@ -34,6 +35,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const initials = user ? (user.displayName || user.email).split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() : "W";
   const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
+  const workspacePath = usePathname();
   const params = useSearchParams();
   const view = params.get("view") === "invoices" ? "invoices" : params.get("document") ? "review" : "documents";
   const selectedId = params.get("document");
@@ -186,8 +188,8 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     itemsRef.current = records; setItems(records);
     return persisted;
   }
-  function navigate(destination: "documents" | "invoices") { currentDocumentId.current = null; router.push(destination === "documents" ? "/" : "/?view=invoices", { scroll: false }); setMobileNav(false); setSelected(new Set()); setPage(1); setFilter("all"); setSaveError(null); }
-  function openItem(id: string) { currentDocumentId.current = id; setSourceUrl(null); setRuns([]); setSaveError(null); setServerErrors({}); router.push(`/?document=${encodeURIComponent(id)}`, { scroll: false }); setMobileNav(false); }
+  function navigate(destination: "documents" | "invoices") { currentDocumentId.current = null; router.push(destination === "documents" ? workspacePath : `${workspacePath}?view=invoices`, { scroll: false }); setMobileNav(false); setSelected(new Set()); setPage(1); setFilter("all"); setSaveError(null); }
+  function openItem(id: string) { currentDocumentId.current = id; setSourceUrl(null); setRuns([]); setSaveError(null); setServerErrors({}); router.push(`${workspacePath}?document=${encodeURIComponent(id)}`, { scroll: false }); setMobileNav(false); }
   async function refresh() {
     setLoading(true); setLoadError(null);
     const revision = workspaceRevision.current;
@@ -214,17 +216,19 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       const type = file.type || (extension === "pdf" ? "application/pdf" : extension === "png" ? "image/png" : extension === "tif" || extension === "tiff" ? "image/tiff" : "image/jpeg");
       added = { document: { id, originalFileName: file.name, contentType: type, documentType: "Unknown", status: "Uploaded", uploadedAt: new Date().toISOString() }, invoice: null, latestRun: null };
     } else {
-      added = { document: await client.uploadDocument(file), invoice: null, latestRun: null };
+      const uploaded = await client.uploadDocument(file);
+      added = (await client.fetchWorkspace()).find(row => row.document.id === uploaded.id)
+        ?? { document: uploaded, invoice: null, latestRun: null };
       if (extract) {
         try { added.latestRun = await client.analyzeDocument(added.document.id); }
         catch (cause) {
-          analysisError = analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
+          analysisError = cause instanceof api.ApiError && [400, 403, 429].includes(cause.status) ? cause.message : analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
           // A lost response is not a failed processing run. Recover the server state when possible.
-          try { added.latestRun = (await client.fetchRuns(added.document.id))[0] ?? null; if (added.latestRun) analysisError = undefined; } catch { /* Keep the saved upload and its request warning. */ }
+          try { added.latestRun = (await client.fetchRuns(added.document.id))[0] ?? null; if (added.latestRun && added.latestRun.status !== "Failed") analysisError = undefined; } catch { /* Keep the saved upload and its request warning. */ }
         }
       }
     }
-    persist([added, ...itemsRef.current]);
+    persist([added, ...itemsRef.current.filter(row => row.document.id !== added.document.id)]);
     if (analysisError) setAnalysisWarnings(previous => ({ ...previous, [added.document.id]: analysisError }));
     return { item: added, analysisError };
   }
@@ -274,9 +278,10 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     const documentId = item.document.id;
     if (activeAnalyses.current.has(documentId) || isAnalysisActive(item.latestRun)) return;
     if (mode === "demo" && !item.sample) { notify("This file is stored locally. Enter the invoice details manually, or connect the API to extract them."); return; }
+    if (mode === "live" && user?.role !== "Admin" && item.latestRun?.status === "Completed" && !window.confirm("Relancer l’analyse consommera à nouveau les pages de ce document. Continuer ?")) return;
     activeAnalyses.current.add(documentId); setAnalyzingDocuments(new Set(activeAnalyses.current)); setSaveError(null);
     try {
-      const run = mode === "demo" ? { ...getDemoRun(item), id: crypto.randomUUID() } : await client.analyzeDocument(documentId);
+      const run = mode === "demo" ? { ...getDemoRun(item), id: crypto.randomUUID() } : await client.analyzeDocument(documentId, item.latestRun?.status === "Completed");
       setAnalysisWarnings(previous => { const next = { ...previous }; delete next[documentId]; return next; });
       const records = mergeAnalysisResult(itemsRef.current, documentId, run);
       persist(records);
@@ -285,7 +290,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
         notify(isAnalysisActive(run) ? "Analysis queued. You can leave this page while it runs." : run.status === "Failed" ? "Extraction failed. You can retry or enter the details manually." : "Extraction finished. Your document is ready to review.");
       } else notify(`${item.document.originalFileName}: ${isAnalysisActive(run) ? "analysis queued." : run.status === "Failed" ? "extraction failed." : "extraction finished."}`);
     } catch (cause) {
-      const message = analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
+      const message = cause instanceof api.ApiError && [400, 403, 429].includes(cause.status) ? cause.message : analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
       setAnalysisWarnings(previous => ({ ...previous, [documentId]: message }));
       if (currentDocumentId.current === documentId) setSaveError(message); else notify(`${item.document.originalFileName}: ${message}`);
     }
@@ -335,6 +340,8 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     </aside>
     <div className="workspace-body"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label={mobileNav ? "Close navigation" : "Open navigation"} aria-expanded={mobileNav} aria-controls="workspace-sidebar" onClick={() => setMobileNav(previous => !previous)}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{view === "invoices" ? "Invoices" : "Documents"}</strong>{view === "review" ? <><ChevronRight size={13} /><span className="breadcrumb-detail">Review</span></> : null}</div><div className="topbar-actions"><span className={`connection-label ${mode === "demo" ? "demo" : ""}`}><span />{mode === "demo" ? "Demo workspace" : loadError ? "Connection unavailable" : "Live workspace"}</span><button className="icon-button help-icon" aria-label="Help and keyboard shortcuts" onClick={() => setPanel("help")}><HelpCircle size={18} /></button><span className="topbar-separator" /><span className="topbar-avatar" aria-label={user ? `Signed in as ${user.email}` : "Personal workspace"}>{initials}</span></div></header>
     <main id="main-content" className={view === "review" ? "main-content review-main" : "main-content"}>
+      {mode === "live" ? <TrialBanner session={apiSession} revision={items.map(row => `${row.latestRun?.id}:${row.latestRun?.status}`).join(",")} /> : <aside className="trial-banner"><div><strong>Démo publique · Données fictives</strong><p>Aucun appel Azure. Les modifications restent dans ce navigateur.</p></div><a className="button" href="/login">Essayer avec Google · 4 pages offertes</a></aside>}
+
       {mode === "live" ? <AnalysisActivity items={items} activeItems={activeItems} recentUpdates={recentUpdates} statusUnavailable={statusUnavailable} onOpen={openItem} onDismiss={() => setAnalysisUpdates([])} /> : null}
       {mode === "live" && Object.keys(analysisWarnings).length ? <section className="processing-activity" aria-label="Analysis requests needing attention"><div className="processing-activity-heading"><strong>Uploads saved · Analysis needs attention</strong><button className="button button-small" onClick={refresh} disabled={loading}>Refresh status</button></div><ul>{Object.entries(analysisWarnings).map(([id, message]) => <li key={id}><button onClick={() => openItem(id)}><span><CircleAlert size={17} /><strong>{items.find(row => row.document.id === id)?.document.originalFileName}</strong></span><span>Open document<ArrowRight size={15} /></span></button><p className="processing-request-warning">{message}</p></li>)}</ul></section> : null}
       {storageWarning ? <div className="error-banner" role="alert"><CircleAlert size={18} /><span>Browser storage is full or unavailable. Keep this tab open and save your invoice before leaving.</span></div> : null}
@@ -357,7 +364,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       <footer className="workspace-footer"><span><ShieldCheck size={15} />Your originals. Your data. Everything in one place.</span><span>{mode === "demo" ? "Sample data · Saved in this browser" : "Wida document workspace"}</span></footer>
       </>}
     </main></div>
-    <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} mode={mode} onUpload={onUpload} onReview={openItem} />
+    <UploadDialog isAdmin={user?.role === "Admin"} open={uploadOpen} onClose={() => setUploadOpen(false)} mode={mode} onUpload={onUpload} onReview={openItem} />
     <dialog ref={panelDialog} className="modal settings-modal" aria-labelledby="panel-title" onCancel={() => setPanel(null)} onClick={event => { if (event.target === event.currentTarget) setPanel(null); }}><div className="modal-header"><div className="modal-symbol">{panel === "help" ? <HelpCircle /> : <Settings2 />}</div><button className="icon-button" aria-label="Close dialog" onClick={() => setPanel(null)}><X size={19} /></button></div><h2 id="panel-title">{panel === "help" ? "A little guidance goes a long way." : "Make this workspace yours."}</h2>{panel === "help" ? <><p className="modal-description">Three simple steps to a lighter document workflow.</p><ol className="tour-steps"><li><span>1</span><div><strong>Bring your documents together</strong><p>Upload a PDF or image. In a connected workspace, Wida extracts the invoice details.</p></div></li><li><span>2</span><div><strong>Give the details a quick check</strong><p>Compare the fields with your original. Confirm uncertain values and add anything missing.</p></div></li><li><span>3</span><div><strong>Save it and move forward</strong><p>Find saved records in Invoices, edit their details, or export them as CSV.</p></div></li></ol><div className="keyboard-guide"><h3>Keyboard shortcuts</h3><p><span>Search documents</span><kbd>/</kbd></p><p><span>Upload documents</span><kbd>U</kbd></p><p><span>Open this guide</span><kbd>?</kbd></p><p><span>Close a dialog</span><kbd>Esc</kbd></p></div></> : <><p className="modal-description">A few preferences for your day-to-day work.</p><div className="setting-row"><div><strong>Appearance</strong><p>Choose the view that feels right.</p></div><div className="segmented-control">{["light", "dark"].map(value => <button key={value} aria-pressed={theme === value} onClick={() => { setTheme(value); try { localStorage.setItem("wida:theme:v1", value); } catch { /* Applied for this visit. */ } }}>{value === "light" ? "Light" : "Dark"}</button>)}</div></div><div className="connection-card"><div><span className="connection-dot" /><strong>{mode === "demo" ? "Demo workspace" : "Wida API workspace"}</strong></div><p>{mode === "demo" ? "You’re working with fictional samples. Your changes and uploaded files are saved on this device. Automatic extraction for new uploads is available when the API is connected." : "Documents and saved invoices are stored by your Wida server. In-progress form drafts stay in this browser tab until you save them."}</p></div><div className="setting-note"><ShieldCheck size={20} /><p>Processing and verification are separate steps. Wida keeps the original extraction confidence visible, even after you correct a value.</p></div></>}<div className="modal-footer"><span>Less paperwork. More clarity.</span><button className="button button-primary" onClick={() => setPanel(null)}>Got it<Check size={16} /></button></div></dialog>
     {toast ? <div className="toast" role="status"><Bell size={19} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast("")}><X size={15} /></button></div> : null}
   </div>;

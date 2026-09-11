@@ -1,6 +1,6 @@
 interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean }
 
-const dataPath = /^(?:documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
+const dataPath = /^(?:trial(?:\/(?:credits|challenge))?|documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
 const authMethods: Record<string, string> = { "auth/session": "GET", "auth/login": "GET", "auth/callback": "GET", "auth/logout": "POST" };
 const redirectCodes = new Set([301, 302, 303, 307, 308]);
 
@@ -70,7 +70,7 @@ export async function proxyRequest(request: Request, endpoint: string, configura
     for (const cookie of upstream.headers.getSetCookie()) {
       if (/^Wida\.[^=\s;]+=/.test(cookie)) outgoing.append("set-cookie", cookie);
     }
-    for (const name of ["content-type", "content-disposition", "content-length", "content-range", "accept-ranges", "x-content-type-options"]) {
+    for (const name of ["content-type", "content-disposition", "content-length", "content-range", "accept-ranges", "retry-after", "x-content-type-options"]) {
       const value = upstream.headers.get(name); if (value) outgoing.set(name, value);
     }
     return new Response(upstream.body, { status: upstream.status, headers: outgoing });

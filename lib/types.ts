@@ -4,6 +4,7 @@ export interface SessionUser {
   id: string;
   email: string;
   displayName: string;
+  role?: "User" | "Admin";
 }
 
 export interface AuthSession {
@@ -20,6 +21,7 @@ export interface DocumentRecord {
   documentType: string;
   status: string;
   uploadedAt: string;
+  pageCount?: number;
 }
 
 export interface ExtractedField {

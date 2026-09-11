@@ -50,10 +50,13 @@ export const logout = (session: ApiSession) => request<void>("auth/logout", { me
 // mutable module state during server rendering or between signed-in accounts.
 export function createApiClient(session?: ApiSession) {
   return {
+    fetchTrial: () => request<TrialBalance>("trial", undefined, session),
+    verifyChallenge: (token: string) => request("trial/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, session),
+    requestCredits: () => request<{ requested: boolean }>("trial/credits", { method: "POST" }, session),
     fetchWorkspace: () => request<WorkspaceItem[]>("documents/workspace?limit=500", undefined, session),
     fetchRun: (id: string) => request<ProcessingRun>(`processing/${encodeURIComponent(id)}`, undefined, session),
     fetchRuns: (id: string) => request<ProcessingRun[]>(`processing/documents/${encodeURIComponent(id)}`, undefined, session),
-    analyzeDocument: (id: string) => request<ProcessingRun>(`processing/documents/${encodeURIComponent(id)}/invoice`, { method: "POST" }, session),
+    analyzeDocument: (id: string, reanalyze = false) => request<ProcessingRun>(`processing/documents/${encodeURIComponent(id)}/invoice${reanalyze ? "?reanalyze=true" : ""}`, { method: "POST" }, session),
     uploadDocument: (file: File) => {
       const body = new FormData(); body.set("file", file);
       return request<DocumentRecord>("documents", { method: "POST", body }, session);
@@ -61,3 +64,5 @@ export function createApiClient(session?: ApiSession) {
     saveInvoice: (body: Omit<Invoice, "id" | "createdAt" | "updatedAt">, id?: string) => request<Invoice>(id ? `invoices/${encodeURIComponent(id)}` : "invoices", { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, session),
   };
 }
+
+export interface TrialBalance { role?: "User" | "Admin"; unrestricted?: boolean; captchaSiteKey?: string; captchaVerified?: boolean; pagesRemaining: number; pagesGranted: number; publicPagesRemaining: number; creditRequested: boolean; maximumDocuments: number; originalRetentionDays: number }

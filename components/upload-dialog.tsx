@@ -8,8 +8,8 @@ import { analysisLabel } from "@/lib/processing";
 import { ApiError } from "@/lib/api";
 
 interface Entry { id: string; file: File; status: "ready" | "uploading" | "done" | "error"; message?: string; documentId?: string; warning?: boolean }
-interface Props { open: boolean; onClose: () => void; mode: WorkspaceMode; onUpload: (file: File, extract: boolean) => Promise<UploadResult>; onReview: (id: string) => void }
-export default function UploadDialog({ open, onClose, mode, onUpload, onReview }: Props) {
+interface Props { isAdmin?: boolean; open: boolean; onClose: () => void; mode: WorkspaceMode; onUpload: (file: File, extract: boolean) => Promise<UploadResult>; onReview: (id: string) => void }
+export default function UploadDialog({ isAdmin = false, open, onClose, mode, onUpload, onReview }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -24,12 +24,12 @@ export default function UploadDialog({ open, onClose, mode, onUpload, onReview }
     const additions: Entry[] = []; const problems: string[] = [];
     for (const file of Array.from(files)) {
       if (!/\.(pdf|png|jpe?g|tiff?)$/i.test(file.name)) { problems.push(`${file.name}: use a PDF, PNG, JPG, or TIFF file.`); continue; }
-      if (file.size === 0 || file.size > 20 * 1024 * 1024) { problems.push(`${file.name}: files must be between 1 byte and 20 MB.`); continue; }
+      if (file.size === 0 || (!isAdmin && file.size > 4 * 1024 * 1024)) { problems.push(isAdmin ? `${file.name}: the file is empty.` : `${file.name}: files must be between 1 byte and 4 Mio.`); continue; }
       if ([...entries, ...additions].some(entry => entry.file.name === file.name && entry.file.size === file.size)) continue;
       additions.push({ id: crypto.randomUUID(), file, status: "ready" });
     }
-    setEntries(previous => [...previous, ...additions].slice(0, 20));
-    if (entries.length + additions.length > 20) problems.push("Add up to 20 documents at a time.");
+    setEntries(previous => isAdmin ? [...previous, ...additions] : [...previous, ...additions].slice(0, 20));
+    if (!isAdmin && entries.length + additions.length > 20) problems.push("Add up to 20 documents at a time.");
     setError(problems.join(" ")); if (input.current) input.current.value = "";
   }
   async function upload() {
@@ -48,7 +48,7 @@ export default function UploadDialog({ open, onClose, mode, onUpload, onReview }
     <div className="modal-header"><div className="modal-symbol"><UploadCloud size={23} /></div><button className="icon-button" aria-label="Close upload" onClick={close} disabled={busy}><X size={19} /></button></div>
     <h2 id="upload-title">Give your paperwork a new home.</h2><p className="modal-description">Upload invoices and turn the details into organized records.</p>
     {mode === "demo" ? <p className="inline-note"><CircleAlert size={16} /><span>Demo workspace. Files stay in this browser; enter their details manually. Sample documents demonstrate extraction.</span></p> : null}
-    <button type="button" className={`dropzone ${dragging ? "is-dragging" : ""}`} disabled={busy} onClick={() => input.current?.click()} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) addFiles(event.dataTransfer.files); }}><span className="dropzone-icon"><UploadCloud size={28} /></span><strong>Drop your documents here</strong><span>or <b>browse files</b> on your computer</span><small>PDF, PNG, JPG or TIFF · Up to 20 MB each</small></button>
+    <button type="button" className={`dropzone ${dragging ? "is-dragging" : ""}`} disabled={busy} onClick={() => input.current?.click()} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) addFiles(event.dataTransfer.files); }}><span className="dropzone-icon"><UploadCloud size={28} /></span><strong>Drop your documents here</strong><span>or <b>browse files</b> on your computer</span><small>{isAdmin ? "PDF, PNG, JPG or TIFF · Sans quota Wida" : "PDF, PNG, JPG or TIFF · 2 pages maximum · Up to 4 Mio each"}</small></button>
     <input ref={input} type="file" className="visually-hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff" onChange={event => { if (event.target.files) addFiles(event.target.files); }} aria-label="Choose invoice files" tabIndex={-1} />
     {error ? <p role="alert" className="field-error upload-error">{error}</p> : null}
     {entries.length ? <ul className="upload-list" aria-label="Selected files">{entries.map(entry => <li key={entry.id}><span className="file-icon"><FileText size={19} /></span><div><strong>{entry.file.name}</strong><small className={entry.status === "error" || entry.warning ? "field-error" : ""}>{entry.message || (entry.status === "uploading" ? mode === "live" && extract ? "Uploading and queuing…" : "Saving document…" : entry.status === "done" ? "Document added" : sizeLabel(entry.file.size))}</small></div>{entry.status === "uploading" ? <LoaderCircle size={19} className="spin" /> : entry.status === "done" && entry.warning ? <CircleAlert size={19} /> : entry.status === "done" ? <Check size={19} className="success-text" /> : <button className="icon-button" aria-label={`Remove ${entry.file.name}`} disabled={busy} onClick={() => setEntries(previous => previous.filter(row => row.id !== entry.id))}><X size={16} /></button>}</li>)}</ul> : null}
