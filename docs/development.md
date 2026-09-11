@@ -14,7 +14,7 @@ pnpm exec tsc --noEmit
 pnpm build
 ```
 
-The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, workspace updates/navigation, session credentials, CSRF headers on every mutation, session expiry, draft ownership isolation, extraction retry prefilling, and invalidation of checks on changed or legacy draft sources. It does not exercise a browser, Google, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
+The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, workspace updates/navigation, session credentials, CSRF headers on every mutation, session expiry, draft ownership isolation, extraction retry prefilling, and invalidation of checks on changed extraction runs. It does not exercise a browser, Google, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
 
 The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. This fallback passed on the development host on 10 September 2026; the normal `pnpm build` script remains unchanged. The host-specific permission failure does not require changing the application or disabling sandbox protections.
 
@@ -95,6 +95,14 @@ Drafts are browser recovery data, not a shared review log. Live drafts are scope
 
 ## Draft implementation
 
-`useReviewDrafts` owns edited drafts and browser-storage failures. Untouched forms derive their values from the current workspace item, so retries cannot leave a cached empty form behind. Edited drafts retain their values; review checkmarks are associated with an extraction run and reset when that run changes. Legacy drafts without a run ID also require review again.
+`useReviewDrafts` owns edited drafts and browser-storage failures. Untouched forms derive their values from the current workspace item, so retries cannot leave a cached empty form behind. Edited drafts retain their values; review checkmarks are associated with an extraction run and reset when that run changes. Stored drafts must match the current format; invalid drafts are ignored without conversion.
 
 The hook stores only edited drafts. `resolveDraft` in `lib/invoice-form.ts` derives untouched values from the workspace item and compares `extractionRunId` before accepting stored checks. Demo retries receive a new run ID as live retries do. Pure helper tests cover value/check reconciliation; the browser checklist verifies component wiring and storage recovery.
+
+## Background analysis UX
+
+The live workspace shows active analyses and up to ten recent completion/failure notices in Document activity. Notices remain until dismissed or the workspace is reloaded. Selecting a notice opens its document. Pending and running are distinct states, and a persistent connection notice explains delayed polling without marking a job failed. The In progress filter and activity include reanalysis of saved invoices, whose saved status remains visible.
+
+Review shows Uploaded → Queued → Extracting → Ready to review using server states, without an estimated duration or fabricated percentage. Existing edits remain usable. Upload success is distinct from analysis admission: capacity/service errors retain the original and offer status refresh/manual entry, without inventing a failed processing run or uploading the same file again.
+
+Browser checks: upload with extraction enabled; close the completed upload dialog; switch documents while waiting; open a completion notice; dismiss notices while active jobs remain; disconnect polling and reconnect; test queue admission 429/503 and an interrupted response; check the activity list and steps at 390px width. Use simulated analysis for UI checks to avoid consuming Azure quota.

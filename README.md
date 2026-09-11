@@ -80,7 +80,7 @@ Search, counts, filters, pagination, and exports operate on the loaded workspace
 
 ## Drafts and extraction retries
 
-Untouched forms use the latest extraction values, including after a failed run is retried successfully. Once you edit a form, Wida keeps that draft when extraction runs again. Review checkmarks belong to the extraction run that you checked: a new run clears those checkmarks while retaining your edited values. Recovered legacy drafts without a run ID also require checking again. Saving successfully clears the draft and displays the saved invoice.
+Untouched forms use the latest extraction values, including after a failed run is retried successfully. Once you edit a form, Wida keeps that draft when extraction runs again. Review checkmarks belong to the extraction run that you checked: a new run clears those checkmarks while retaining your edited values. Saving successfully clears the draft and displays the saved invoice.
 
 The API keeps a document `Saved` when invoice saving overlaps extraction, including when extraction fails or is cancelled. Processing history still reports each run's own result. Neither a saved status nor a field check is a formal approval or a server-side review audit trail.
 
@@ -127,7 +127,7 @@ The UI uses native HTML controls, custom styles, and `lucide-react` icons. shadc
 
 The API extracts eight header fields and line items from the first analyzed document. Extracted lines prefill the editable form; low or unknown confidence requires an explicit check before saving. Saved invoices and edited drafts retain their values. Live PDFs use the browser's PDF viewer. Field-to-source highlighting is demonstrated on sample invoices, but live extraction polygons are not drawn. Image and sample previews have custom zoom and rotation controls; PDF controls depend on the browser. TIFF preview support also depends on the browser.
 
-There is no background processing worker, approval/rejection workflow, or server-persisted draft and field-review audit trail. **Extraction completed**, **checked in the form**, and **invoice saved** are separate events. Live PostgreSQL, Azure, and Google end-to-end validation must be performed in a configured environment; screenshots of the demo do not establish that integration result.
+Analysis uses a persistent backend queue. There is no approval/rejection workflow or server-persisted draft and field-review audit trail. **Extraction completed**, **checked in the form**, and **invoice saved** are separate events. Live PostgreSQL, Azure, and Google end-to-end validation must be performed in a configured environment; screenshots of the demo do not establish that integration result.
 
 An expired session closes the live workspace and preserves drafts under their owner's id so the same account can recover them after signing in again. Explicit sign-out warns about unsaved drafts and removes that account's drafts from the current tab. Other open tabs close their workspace when the account changes or signs out, retaining only owner-scoped draft recovery data to avoid silently discarding their unsaved edits; session checks on focus provide a fallback. Draft recovery is browser-local and cannot protect unsaved changes if storage is unavailable.
 
@@ -140,3 +140,7 @@ Coding agents should read [AGENTS.md](AGENTS.md) and the relevant version-specif
 ## Licence
 
 This project is licensed under the [MIT Licence](LICENSE).
+
+## Background analysis
+
+Connected analysis requests return immediately with a queued run. The workspace polls known active analyses every three seconds (ten seconds after retrieval errors), restores their state after reload, and preserves invoice edits when results arrive. Queued/running documents cannot be submitted again from the review screen. Queue capacity is enforced by the API; upload remains saved when analysis admission fails. Initialize the API database before starting the application. See [queue operations](../wida-api/docs/processing-queue.md).

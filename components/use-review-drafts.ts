@@ -15,7 +15,7 @@ export function useReviewDrafts(mode: WorkspaceMode, userId?: string) {
 
   function storeDraft(item: WorkspaceItem, draft: ReviewDraft) {
     const id = item.document.id;
-    const edited = { ...draft, extractionRunId: item.latestRun?.id ?? null };
+    const edited = { ...draft, extractionRunId: item.latestRun?.status === "Completed" ? item.latestRun.id : null };
     setDrafts(previous => ({ ...previous, [id]: edited }));
     const persisted = saveDraft(id, mode, edited, userId);
     setFailed(previous => {

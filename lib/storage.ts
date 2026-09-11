@@ -23,7 +23,17 @@ export function saveWorkspace(items: WorkspaceItem[]) {
 export function loadDraft(id: string, mode: WorkspaceMode, userId?: string): ReviewDraft | null {
   try {
     const value = JSON.parse(draftStore(mode).getItem(draftKey(id, mode, userId)) || "null");
-    return value?.values && typeof value.values.supplierName === "string" && Array.isArray(value.values.lines) && Array.isArray(value.checkedFields) ? value : null;
+    // Stored JSON must match the current draft contract; no format conversion on read.
+    return value?.values
+      && (value.extractionRunId === null || typeof value.extractionRunId === "string")
+      && ["supplierName", "supplierAddress", "supplierTaxId", "invoiceNumber", "invoiceDate", "dueDate",
+        "purchaseOrderNumber", "currency", "shippingAmount", "discountAmount", "subtotalAmount", "taxAmount", "totalAmount"]
+        .every(key => typeof value.values[key] === "string")
+      && Array.isArray(value.values.lines)
+      && value.values.lines.every((line: Record<string, unknown>) => line && ["id", "description", "quantity",
+        "unitOfMeasure", "unitPrice", "taxRate", "taxAmount", "lineAmount"].every(key => typeof line[key] === "string"))
+      && Array.isArray(value.checkedFields) && value.checkedFields.every((field: unknown) => typeof field === "string")
+      ? value : null;
   } catch { return null; }
 }
 

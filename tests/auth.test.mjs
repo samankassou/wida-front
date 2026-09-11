@@ -84,11 +84,25 @@ test("live drafts survive same-owner recovery and cannot be loaded or deleted by
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: memoryStorage() });
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: memoryStorage() });
   try {
-    const first = { values: { supplierName: "First supplier", lines: [] }, checkedFields: [] };
-    const second = { values: { supplierName: "Second supplier", lines: [] }, checkedFields: [] };
+    const values = { supplierName: "First supplier", supplierAddress: "", supplierTaxId: "", invoiceNumber: "",
+      invoiceDate: "", dueDate: "", purchaseOrderNumber: "", currency: "", shippingAmount: "", discountAmount: "",
+      subtotalAmount: "", taxAmount: "", totalAmount: "", lines: [] };
+    const first = { extractionRunId: null, values, checkedFields: [] };
+    const second = { ...first, values: { ...values, supplierName: "Second supplier" } };
     assert.equal(saveDraft("doc", "live", first), false, "Live drafts require a verified owner");
     assert.equal(saveDraft("doc", "live", first, "owner:1"), true);
     assert.deepEqual(loadDraft("doc", "live", "owner:1"), first);
+    for (const invalid of [
+      { values, checkedFields: [] },
+      { ...first, values: { ...values, shippingAmount: undefined } },
+      { ...first, values: { ...values, discountAmount: undefined } },
+      { ...first, values: { ...values, lines: [null] } },
+      { ...first, checkedFields: [42] },
+    ]) {
+      saveDraft("invalid", "live", invalid, "owner:1");
+      assert.equal(loadDraft("invalid", "live", "owner:1"), null, "Incomplete or malformed drafts are rejected");
+    }
+    removeDraft("invalid", "live", "owner:1");
     assert.equal(loadDraft("doc", "live", "owner:2"), null);
     assert.equal(loadDraft("doc", "live"), null);
     assert.equal(hasLiveDrafts("owner:1"), true);
@@ -101,11 +115,8 @@ test("live drafts survive same-owner recovery and cannot be loaded or deleted by
     assert.equal(hasLiveDrafts("owner:1"), false);
     assert.deepEqual(loadDraft("doc", "live", "owner:2"), second);
     assert.deepEqual(loadDraft("doc", "demo"), first);
-    sessionStorage.setItem("wida:draft:v1:doc", JSON.stringify(first));
-    assert.deepEqual(loadDraft("doc", "live", "owner:2"), second, "Legacy drafts must never override the signed-in owner's draft");
     clearLiveDrafts("owner:2");
-    assert.equal(loadDraft("doc", "live", "owner:2"), null, "Unowned drafts must never load for a signed-in owner");
-    assert.equal(sessionStorage.getItem("wida:draft:v1:doc"), JSON.stringify(first), "Unowned drafts remain untouched for explicit recovery or cleanup");
+    assert.equal(loadDraft("doc", "live", "owner:2"), null, "Cleared drafts must not load");
     assert.deepEqual(loadDraft("doc", "demo"), first, "Demo drafts are unaffected");
   } finally {
     if (oldSession) Object.defineProperty(globalThis, "sessionStorage", oldSession); else delete globalThis.sessionStorage;

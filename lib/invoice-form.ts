@@ -99,7 +99,7 @@ export function createDraft(item: WorkspaceItem): ReviewDraft {
       taxRate: line.taxRate == null ? "" : String(line.taxRate), taxAmount: line.taxAmount == null ? "" : String(line.taxAmount),
       lineAmount: line.lineAmount == null ? "" : String(line.lineAmount),
     }));
-    return { values, checkedFields: Object.keys(extractionFields), extractionRunId: item.latestRun?.id ?? null };
+    return { values, checkedFields: Object.keys(extractionFields), extractionRunId: item.latestRun?.status === "Completed" ? item.latestRun.id : null };
   }
   for (const key of Object.keys(extractionFields) as (keyof typeof extractionFields)[]) {
     values[key] = extractedValue(getExtractedField(item, key));
@@ -107,17 +107,13 @@ export function createDraft(item: WorkspaceItem): ReviewDraft {
   }
   values.currency = getExtractedCurrency(item);
   values.lines = extractedLines(item);
-  return { values, checkedFields: [], extractionRunId: item.latestRun?.id ?? null };
+  return { values, checkedFields: [], extractionRunId: item.latestRun?.status === "Completed" ? item.latestRun.id : null };
 }
 
 // Only user edits are cached. Untouched forms always follow the latest extraction.
 export function resolveDraft(item: WorkspaceItem, edited?: ReviewDraft): ReviewDraft {
   if (!edited) return createDraft(item);
-  // Older cached drafts predate these optional adjustments. Preserve all edits.
-  if (edited.values.shippingAmount === undefined || edited.values.discountAmount === undefined) {
-    edited = { ...edited, values: { ...edited.values, shippingAmount: edited.values.shippingAmount ?? "", discountAmount: edited.values.discountAmount ?? "" } };
-  }
-  const extractionRunId = item.latestRun?.id ?? null;
+  const extractionRunId = item.latestRun?.status === "Completed" ? item.latestRun.id : null;
   return edited.extractionRunId === extractionRunId
     ? edited
     : { ...edited, checkedFields: [], extractionRunId };
@@ -125,7 +121,7 @@ export function resolveDraft(item: WorkspaceItem, edited?: ReviewDraft): ReviewD
 
 const numericPattern = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;
 export function numericValue(value: string): number | null {
-  const clean = (value ?? "").trim();
+  const clean = value.trim();
   if (!clean || !numericPattern.test(clean)) return null;
   const parsed = Number(clean);
   return Number.isFinite(parsed) ? parsed : null;
@@ -171,7 +167,7 @@ export function validateDraft(draft: ReviewDraft, item: WorkspaceItem): FieldErr
     errors.dueDate = "Due date cannot be before the invoice date.";
   }
   for (const field of ["subtotalAmount", "taxAmount", "shippingAmount", "discountAmount", "totalAmount"] as const) {
-    if ((values[field] ?? "").trim() && numericValue(values[field]) === null) errors[field] = "Enter an amount using a decimal point, for example 1200.00.";
+    if (values[field].trim() && numericValue(values[field]) === null) errors[field] = "Enter an amount using a decimal point, for example 1200.00.";
   }
   if (values.currency.trim() && !/^[a-zA-Z]{3}$/.test(values.currency.trim())) errors.currency = "Use a three-letter currency code, such as EUR or XAF.";
   const subtotal = numericValue(values.subtotalAmount);

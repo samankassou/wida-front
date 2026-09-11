@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeAnalysisResult, mergeInvoiceResult, nextReviewItem } from "../lib/workspace-state.ts";
+import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, nextReviewItem } from "../lib/workspace-state.ts";
 
 const item = (id) => ({
   document: { id, originalFileName: `${id}.pdf`, contentType: "application/pdf", documentType: "Invoice", status: "Uploaded", uploadedAt: "2026-09-01T12:00:00Z" },
@@ -101,4 +101,34 @@ test("unknown or absent current selection starts at the first queued document", 
   const queue = [items[1], items[2]];
   assert.equal(nextReviewItem(items, queue, "missing")?.document.id, "B");
   assert.equal(nextReviewItem(items, queue, null)?.document.id, "B");
+});
+
+test("queued analysis is active and stale polling cannot replace a newer run or undo completion", () => {
+  const queued = { ...run("A", "Pending"), processor: "AzureDocumentIntelligence" };
+  assert.equal(isAnalysisActive(queued), true);
+  const initial = mergeAnalysisResult([item("A")], "A", queued);
+  assert.equal(initial[0].document.status, "Queued");
+  const completed = { ...queued, status: "Completed" };
+  const finished = mergePolledAnalysis(initial, completed);
+  assert.equal(finished[0].document.status, "ReviewRequired");
+  assert.strictEqual(mergePolledAnalysis(finished, queued), finished);
+  assert.strictEqual(mergePolledAnalysis(initial, { ...completed, id: "older-run" }), initial);
+});
+
+test("polling merges extraction into the latest saved invoice without losing user data", () => {
+  const queued = { ...run("A", "Running"), processor: "AzureDocumentIntelligence" };
+  const current = mergeInvoiceResult(mergeAnalysisResult([item("A")], "A", queued), "A", invoice("A"));
+  const result = mergePolledAnalysis(current, { ...queued, status: "Completed" });
+  assert.deepEqual(result[0].invoice, current[0].invoice);
+  assert.equal(result[0].document.status, "Saved");
+});
+
+test("repeated polling and old completions cannot create a second result transition", () => {
+  const initial = [{ ...item("A"), latestRun: { ...run("A", "Running"), processor: "AzureDocumentIntelligence" } }];
+  const completed = { ...initial[0].latestRun, status: "Completed" };
+  const result = mergePolledAnalysis(initial, completed);
+  assert.notStrictEqual(result, initial);
+  assert.strictEqual(mergePolledAnalysis(result, completed), result);
+  const retry = mergeAnalysisResult(result, "A", { ...completed, id: "new-run", status: "Pending" });
+  assert.strictEqual(mergePolledAnalysis(retry, completed), retry);
 });

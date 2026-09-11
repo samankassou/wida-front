@@ -109,8 +109,8 @@ export interface InvoiceDraft {
 }
 
 export interface ReviewDraft {
-  /** Extraction whose values were explicitly reviewed; absent on legacy drafts. */
-  extractionRunId?: string | null;
+  /** Completed extraction whose values were reviewed; null before an extraction completes. */
+  extractionRunId: string | null;
   values: InvoiceDraft;
   checkedFields: string[];
 }

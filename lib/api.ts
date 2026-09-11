@@ -51,6 +51,7 @@ export const logout = (session: ApiSession) => request<void>("auth/logout", { me
 export function createApiClient(session?: ApiSession) {
   return {
     fetchWorkspace: () => request<WorkspaceItem[]>("documents/workspace?limit=500", undefined, session),
+    fetchRun: (id: string) => request<ProcessingRun>(`processing/${encodeURIComponent(id)}`, undefined, session),
     fetchRuns: (id: string) => request<ProcessingRun[]>(`processing/documents/${encodeURIComponent(id)}`, undefined, session),
     analyzeDocument: (id: string) => request<ProcessingRun>(`processing/documents/${encodeURIComponent(id)}/invoice`, { method: "POST" }, session),
     uploadDocument: (file: File) => {

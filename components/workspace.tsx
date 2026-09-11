@@ -3,26 +3,28 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Bell, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { getDemoItems, getDemoRun } from "@/lib/demo-data";
 import { amountOf, currencyOf, dateLabel, money, numberOf, stageLabels, stageOf, supplierOf } from "@/lib/format";
 import { resolveDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-form";
 import { getDocumentFile, hasLiveDrafts, loadWorkspace, putDocumentFile, saveWorkspace } from "@/lib/storage";
-import { mergeAnalysisResult, mergeInvoiceResult, nextReviewItem } from "@/lib/workspace-state";
+import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, nextReviewItem } from "@/lib/workspace-state";
 import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, SessionUser, WorkspaceItem, WorkspaceMode } from "@/lib/types";
 import UploadDialog from "./upload-dialog";
+import AnalysisActivity from "./analysis-activity";
+import { analysisLabel, analysisRequestMessage, type UploadResult } from "@/lib/processing";
 import { useReviewDrafts } from "./use-review-drafts";
 
 const InvoiceReview = dynamic(() => import("./invoice-review"), { loading: () => <div className="review-loading"><LoaderCircle className="spin" /><p>Opening your document…</p></div> });
 const demoItems = getDemoItems();
 type Filter = "all" | DocumentStage;
 type Panel = "settings" | "help" | null;
-const filters: { key: Filter; label: string }[] = [{ key: "all", label: "All documents" }, { key: "review", label: "Needs review" }, { key: "saved", label: "Saved" }, { key: "failed", label: "Needs attention" }];
+const filters: { key: Filter; label: string }[] = [{ key: "all", label: "All documents" }, { key: "review", label: "Needs review" }, { key: "processing", label: "In progress" }, { key: "saved", label: "Saved" }, { key: "failed", label: "Needs attention" }];
 
-function StatusBadge({ stage }: { stage: DocumentStage }) {
-  const Icon = stage === "saved" ? CheckCircle2 : stage === "review" ? CircleAlert : stage === "processing" ? LoaderCircle : stage === "failed" ? CircleAlert : Clock3;
-  return <span className={`badge badge-${stage}`}><Icon size={13} className={stage === "processing" ? "spin" : ""} />{stageLabels[stage]}</span>;
+function StatusBadge({ stage, queued = false }: { stage: DocumentStage; queued?: boolean }) {
+  const Icon = stage === "saved" ? CheckCircle2 : stage === "review" ? CircleAlert : stage === "processing" ? queued ? Clock3 : LoaderCircle : stage === "failed" ? CircleAlert : Clock3;
+  return <span className={`badge badge-${stage}`}><Icon size={13} className={stage === "processing" && !queued ? "spin" : ""} />{queued && stage === "processing" ? "Queued" : stageLabels[stage]}</span>;
 }
 function csvValue(value: unknown) { const text = String(value ?? ""); return `"${(/^[\s]*[=+@-]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`; }
 
@@ -56,13 +58,16 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const [panel, setPanel] = useState<Panel>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
+  const [analysisUpdates, setAnalysisUpdates] = useState<ProcessingRun[]>([]);
+  const [statusUnavailable, setStatusUnavailable] = useState(false);
+  const [analysisWarnings, setAnalysisWarnings] = useState<Record<string, string>>({});
   const { drafts, restoreDraft, storeDraft, discardDraft, hasFailedDrafts } = useReviewDrafts(mode, userId);
   const activeSaves = useRef(new Set<string>());
   const activeAnalyses = useRef(new Set<string>());
   const [savingDocuments, setSavingDocuments] = useState<Set<string>>(() => new Set());
   const [analyzingDocuments, setAnalyzingDocuments] = useState<Set<string>>(() => new Set());
   const saving = selectedId !== null && savingDocuments.has(selectedId);
-  const analyzing = selectedId !== null && analyzingDocuments.has(selectedId);
+
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [workspaceStorageWarning, setWorkspaceStorageWarning] = useState(false);
@@ -75,6 +80,8 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   const filterPopover = useRef<HTMLDetailsElement>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   const item = items.find(row => row.document.id === selectedId);
+  const analyzing = (selectedId !== null && analyzingDocuments.has(selectedId)) || isAnalysisActive(item?.latestRun);
+  const hasQueuedAnalysis = items.some(row => isAnalysisActive(row.latestRun));
   const draft = item ? resolveDraft(item, drafts[item.document.id]) : null;
   const notify = useCallback((message: string) => setToast(message), [setToast]);
   useEffect(() => { currentDocumentId.current = selectedId; }, [selectedId]);
@@ -90,6 +97,45 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     });
     return () => { active = false; };
   }, [mode, client]);
+  useEffect(() => {
+    if (mode !== "live" || !hasQueuedAnalysis) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let failures = 0;
+    async function poll() {
+      const pending = itemsRef.current.flatMap(row => isAnalysisActive(row.latestRun) ? [row.latestRun!] : []);
+      const results = await Promise.allSettled(pending.map(run => client.fetchRun(run.id)));
+      if (!active) return;
+      let records = itemsRef.current;
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        const run = result.value;
+        const merged = mergePolledAnalysis(records, run);
+        if (merged === records) continue;
+        records = merged;
+        if (run.status === "Completed" || run.status === "Failed") {
+          setAnalysisUpdates(previous => [run, ...previous.filter(existing => existing.documentId !== run.documentId)].slice(0, 10));
+          const name = records.find(row => row.document.id === run.documentId)?.document.originalFileName || "Document";
+          notify(`${name}: ${analysisLabel(run).toLowerCase()}.`);
+        }
+        if (currentDocumentId.current === run.documentId) {
+          setRuns(previous => [run, ...previous.filter(existing => existing.documentId === run.documentId && existing.id !== run.id)]);
+
+        }
+      }
+      if (records !== itemsRef.current) {
+        workspaceRevision.current++;
+        itemsRef.current = records;
+        setItems(records);
+      }
+      failures = results.some(result => result.status === "rejected") ? failures + 1 : 0;
+      setStatusUnavailable(failures > 0);
+      if (failures === 3) notify("Analysis status is temporarily unavailable. We’ll keep checking; your edits are preserved.");
+      timer = setTimeout(poll, failures ? 10000 : 3000);
+    }
+    timer = setTimeout(poll, 3000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [mode, client, hasQueuedAnalysis, notify]);
   useEffect(() => {
     if (!selectedId) return;
     let active = true; let objectUrl: string | null = null;
@@ -151,12 +197,16 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
         return;
       }
       const records = mode === "live" ? await client.fetchWorkspace() : loadWorkspace() ?? getDemoItems();
-      if (revision === workspaceRevision.current) { itemsRef.current = records; setItems(records); }
+      if (revision === workspaceRevision.current) {
+        itemsRef.current = records; setItems(records);
+        setAnalysisWarnings(previous => Object.fromEntries(Object.entries(previous).filter(([id]) => !records.find(row => row.document.id === id)?.latestRun)));
+      }
     }
     catch (cause) { setLoadError(cause instanceof Error ? cause.message : "Unable to refresh documents."); }
     finally { setLoading(false); }
   }
-  async function onUpload(file: File, extract: boolean): Promise<WorkspaceItem> {
+  async function onUpload(file: File, extract: boolean): Promise<UploadResult> {
+    let analysisError: string | undefined;
     let added: WorkspaceItem;
     if (mode === "demo") {
       const id = crypto.randomUUID(); await putDocumentFile(id, file);
@@ -167,10 +217,16 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       added = { document: await client.uploadDocument(file), invoice: null, latestRun: null };
       if (extract) {
         try { added.latestRun = await client.analyzeDocument(added.document.id); }
-        catch { added.latestRun = { id: "request-interrupted", documentId: added.document.id, status: "Failed", processor: "Invoice extraction", processorVersion: null, startedAt: new Date().toISOString(), completedAt: null, errorCode: "CONNECTION_INTERRUPTED", errorMessage: "Your upload was saved, but the extraction response was interrupted. Refresh the document before retrying.", extractedFields: [] }; }
+        catch (cause) {
+          analysisError = analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
+          // A lost response is not a failed processing run. Recover the server state when possible.
+          try { added.latestRun = (await client.fetchRuns(added.document.id))[0] ?? null; if (added.latestRun) analysisError = undefined; } catch { /* Keep the saved upload and its request warning. */ }
+        }
       }
     }
-    persist([added, ...itemsRef.current]); return added;
+    persist([added, ...itemsRef.current]);
+    if (analysisError) setAnalysisWarnings(previous => ({ ...previous, [added.document.id]: analysisError }));
+    return { item: added, analysisError };
   }
   async function signOut() {
     if (!onLogout || !userId || loggingOut) return;
@@ -216,30 +272,34 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   async function analyze() {
     if (!item) return;
     const documentId = item.document.id;
-    if (activeAnalyses.current.has(documentId)) return;
+    if (activeAnalyses.current.has(documentId) || isAnalysisActive(item.latestRun)) return;
     if (mode === "demo" && !item.sample) { notify("This file is stored locally. Enter the invoice details manually, or connect the API to extract them."); return; }
     activeAnalyses.current.add(documentId); setAnalyzingDocuments(new Set(activeAnalyses.current)); setSaveError(null);
     try {
       const run = mode === "demo" ? { ...getDemoRun(item), id: crypto.randomUUID() } : await client.analyzeDocument(documentId);
+      setAnalysisWarnings(previous => { const next = { ...previous }; delete next[documentId]; return next; });
       const records = mergeAnalysisResult(itemsRef.current, documentId, run);
       persist(records);
       if (currentDocumentId.current === documentId) {
         setRuns(previous => [run, ...previous.filter(existing => existing.documentId === documentId && existing.id !== run.id)]);
-        notify(run.status === "Failed" ? "Extraction failed. You can retry or enter the details manually." : "Extraction finished. Your document is ready to review.");
-      } else notify(`${item.document.originalFileName}: ${run.status === "Failed" ? "extraction failed." : "extraction finished."}`);
+        notify(isAnalysisActive(run) ? "Analysis queued. You can leave this page while it runs." : run.status === "Failed" ? "Extraction failed. You can retry or enter the details manually." : "Extraction finished. Your document is ready to review.");
+      } else notify(`${item.document.originalFileName}: ${isAnalysisActive(run) ? "analysis queued." : run.status === "Failed" ? "extraction failed." : "extraction finished."}`);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Extraction was interrupted.";
+      const message = analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
+      setAnalysisWarnings(previous => ({ ...previous, [documentId]: message }));
       if (currentDocumentId.current === documentId) setSaveError(message); else notify(`${item.document.originalFileName}: ${message}`);
     }
     finally { activeAnalyses.current.delete(documentId); setAnalyzingDocuments(new Set(activeAnalyses.current)); }
   }
+  const activeItems = items.filter(row => isAnalysisActive(row.latestRun));
+  const recentUpdates = analysisUpdates.filter(run => items.some(row => row.document.id === run.documentId && row.latestRun?.id === run.id && !isAnalysisActive(row.latestRun)));
   const counts = items.reduce((acc, row) => { acc[stageOf(row)]++; return acc; }, { review: 0, saved: 0, uploaded: 0, processing: 0, failed: 0 });
   const reviewQueue = items.filter(row => !row.invoice && (stageOf(row) === "review" || stageOf(row) === "uploaded") && (!selected.size || selected.has(row.document.id)));
   const nextReview = nextReviewItem(items, reviewQueue, selectedId);
   const base = view === "invoices" ? items.filter(row => row.invoice) : items;
   const currencies = Array.from(new Set(items.map(currencyOf).filter(Boolean))).sort();
   const visible = base.filter(row => {
-    if (filter !== "all" && stageOf(row) !== filter) return false;
+    if (filter !== "all" && (filter === "processing" ? !isAnalysisActive(row.latestRun) : stageOf(row) !== filter)) return false;
     if (currency && currencyOf(row) !== currency) return false;
     if (period !== "all" && new Date(row.document.uploadedAt).getTime() < filterNow - Number(period) * 86400000) return false;
     return !search || [supplierOf(row), row.document.originalFileName, numberOf(row), currencyOf(row)].some(value => value.toLowerCase().includes(search));
@@ -275,8 +335,10 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     </aside>
     <div className="workspace-body"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label={mobileNav ? "Close navigation" : "Open navigation"} aria-expanded={mobileNav} aria-controls="workspace-sidebar" onClick={() => setMobileNav(previous => !previous)}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{view === "invoices" ? "Invoices" : "Documents"}</strong>{view === "review" ? <><ChevronRight size={13} /><span className="breadcrumb-detail">Review</span></> : null}</div><div className="topbar-actions"><span className={`connection-label ${mode === "demo" ? "demo" : ""}`}><span />{mode === "demo" ? "Demo workspace" : loadError ? "Connection unavailable" : "Live workspace"}</span><button className="icon-button help-icon" aria-label="Help and keyboard shortcuts" onClick={() => setPanel("help")}><HelpCircle size={18} /></button><span className="topbar-separator" /><span className="topbar-avatar" aria-label={user ? `Signed in as ${user.email}` : "Personal workspace"}>{initials}</span></div></header>
     <main id="main-content" className={view === "review" ? "main-content review-main" : "main-content"}>
+      {mode === "live" ? <AnalysisActivity items={items} activeItems={activeItems} recentUpdates={recentUpdates} statusUnavailable={statusUnavailable} onOpen={openItem} onDismiss={() => setAnalysisUpdates([])} /> : null}
+      {mode === "live" && Object.keys(analysisWarnings).length ? <section className="processing-activity" aria-label="Analysis requests needing attention"><div className="processing-activity-heading"><strong>Uploads saved · Analysis needs attention</strong><button className="button button-small" onClick={refresh} disabled={loading}>Refresh status</button></div><ul>{Object.entries(analysisWarnings).map(([id, message]) => <li key={id}><button onClick={() => openItem(id)}><span><CircleAlert size={17} /><strong>{items.find(row => row.document.id === id)?.document.originalFileName}</strong></span><span>Open document<ArrowRight size={15} /></span></button><p className="processing-request-warning">{message}</p></li>)}</ul></section> : null}
       {storageWarning ? <div className="error-banner" role="alert"><CircleAlert size={18} /><span>Browser storage is full or unavailable. Keep this tab open and save your invoice before leaving.</span></div> : null}
-      {view === "review" ? item && draft ? <InvoiceReview key={item.document.id} item={item} draft={draft} onDraftChange={changeDraft} onSave={onSave} onBack={() => navigate("documents")} onNext={() => { if (nextReview) openItem(nextReview.document.id); }} hasNext={Boolean(nextReview)} saving={saving} mode={mode} sourceUrl={sourceUrl} runs={mode === "demo" ? item.latestRun ? [item.latestRun] : [] : runs} onAnalyze={analyze} analyzing={analyzing} serverErrors={serverErrors} error={saveError} /> : loading ? <div className="review-loading"><LoaderCircle className="spin" />Loading document…</div> : <div className="empty-state"><FolderOpen /><h2>We couldn’t find this document</h2><p>{loadError || "The link may be outdated, or the document belongs to another workspace."}</p><button className="button" onClick={() => navigate("documents")}><ArrowLeft size={16} />Back to documents</button></div> : <>
+      {view === "review" ? item && draft ? <InvoiceReview key={item.document.id} item={item} draft={draft} onDraftChange={changeDraft} onSave={onSave} onBack={() => navigate("documents")} onNext={() => { if (nextReview) openItem(nextReview.document.id); }} hasNext={Boolean(nextReview)} saving={saving} mode={mode} sourceUrl={sourceUrl} runs={mode === "demo" ? item.latestRun ? [item.latestRun] : [] : runs} onAnalyze={analyze} analyzing={analyzing} serverErrors={serverErrors} error={saveError || (selectedId ? analysisWarnings[selectedId] : null)} /> : loading ? <div className="review-loading"><LoaderCircle className="spin" />Loading document…</div> : <div className="empty-state"><FolderOpen /><h2>We couldn’t find this document</h2><p>{loadError || "The link may be outdated, or the document belongs to another workspace."}</p><button className="button" onClick={() => navigate("documents")}><ArrowLeft size={16} />Back to documents</button></div> : <>
       <section className="page-heading"><div><div className="eyebrow">YOUR PAPERWORK, SIMPLIFIED</div><h1>{view === "invoices" ? "Invoices" : "Documents"}<span className="title-dot">.</span></h1><p>{view === "invoices" ? "Checked, saved, and ready for whatever comes next." : "A place for every document. A clear path for every invoice."}</p></div><div className="page-actions">{view === "invoices" ? <button className="button" onClick={exportInvoices} disabled={!counts.saved}><Download size={16} />Export CSV</button> : null}<button className="button button-primary" onClick={() => setUploadOpen(true)}><Plus size={18} />Upload documents</button></div></section>
       {mode === "demo" ? <div className="demo-banner"><span className="demo-banner-icon"><Sparkles size={16} /></span><span><strong>Make yourself at home.</strong> Explore with sample invoices, or upload a document to try manual entry.</span><button onClick={() => setPanel("settings")}>About this workspace<ArrowRight size={14} /></button></div> : null}
       {view === "documents" ? <section className="summary-grid" aria-label="Workspace overview">
@@ -286,10 +348,10 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       </section> : null}
       <section className="documents-panel" aria-label={view === "invoices" ? "Saved invoices" : "Document inbox"}>
         <div className="panel-heading"><div><h2>{view === "invoices" ? "Your invoice records" : "Document inbox"}</h2><span className="record-count">{base.length}</span></div><div className="panel-heading-actions"><span className="quiet-label">{mode === "demo" ? "Local workspace" : "Latest 500 documents"}</span><button className="icon-button" onClick={refresh} aria-label="Refresh documents" disabled={loading}><RefreshCw size={16} className={loading ? "spin" : ""} /></button></div></div>
-        {view === "documents" ? <div className="filter-tabs" aria-label="Document views">{filters.map(tab => <button key={tab.key} className={filter === tab.key ? "active" : ""} aria-pressed={filter === tab.key} onClick={() => { setFilter(tab.key); setPage(1); }}>{tab.label}<span>{tab.key === "all" ? items.length : counts[tab.key]}</span></button>)}</div> : null}
+        {view === "documents" ? <div className="filter-tabs" aria-label="Document views">{filters.map(tab => <button key={tab.key} className={filter === tab.key ? "active" : ""} aria-pressed={filter === tab.key} onClick={() => { setFilter(tab.key); setPage(1); }}>{tab.label}<span>{tab.key === "all" ? items.length : tab.key === "processing" ? activeItems.length : counts[tab.key]}</span></button>)}</div> : null}
         <div className="table-toolbar"><div className="search-box"><Search size={17} /><input ref={searchInput} value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search documents, suppliers, invoice numbers…" aria-label="Search documents" />{query ? <button className="icon-button" aria-label="Clear search" onClick={() => setQuery("")}><X size={14} /></button> : <kbd>/</kbd>}</div><div className="toolbar-filters"><details ref={filterPopover} className="filter-popover"><summary><SlidersHorizontal size={15} />Filters{currency || period !== "all" ? <span className="filter-indicator" /> : null}</summary><div className="filter-content"><label>Currency<select aria-label="Currency" value={currency} onChange={event => { setCurrency(event.target.value); setPage(1); }}><option value="">All currencies</option>{currencies.map(code => <option key={code}>{code}</option>)}</select></label><label>Uploaded<select aria-label="Uploaded date range" value={period} onChange={event => { setPeriod(event.target.value); setPage(1); }}><option value="all">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select></label><button className="button button-small" onClick={() => { setCurrency(""); setPeriod("all"); }}>Reset filters</button></div></details><label className="sort-select"><ArrowDownUp size={15} /><span className="visually-hidden">Sort documents</span><select value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="supplier">Supplier A–Z</option></select></label></div></div>
         {selected.size ? <div className="selection-bar"><span><CheckCheck size={16} />{selected.size} selected</span><button onClick={() => { const target = items.find(row => selected.has(row.document.id)); if (target) openItem(target.document.id); }}>Review selected<ArrowRight size={14} /></button><button onClick={exportInvoices}><Download size={14} />Export saved invoices</button><button className="selection-clear" aria-label="Clear selection" onClick={() => setSelected(new Set())}><X size={16} /></button></div> : null}
-        {loadError ? <div className="error-banner" role="alert"><CircleAlert size={19} /><div><strong>Let’s get you connected again.</strong><p>{loadError}</p></div><button className="button button-small" onClick={refresh}>Try again</button></div> : loading ? <div className="table-skeleton" aria-label="Loading documents" aria-busy="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span /><span /><span /></div>)}</div> : !visible.length ? <div className="empty-state"><span className="empty-icon">{search || filter !== "all" || currency || period !== "all" ? <Search size={25} /> : <Inbox size={28} />}</span><h3>{base.length ? "No documents match this view" : view === "invoices" ? "Your first saved invoice starts here" : "A fresh start for your paperwork"}</h3><p>{base.length ? "Try another search or clear your filters to see more." : view === "invoices" ? "Review a document and save its details to build your invoice library." : "Upload an invoice to keep the original and its details together."}</p><button className="button" onClick={() => base.length ? clearFilters() : view === "invoices" ? navigate("documents") : setUploadOpen(true)}>{base.length ? "Clear filters" : view === "invoices" ? "Go to documents" : "Upload your first document"}<ArrowRight size={15} /></button></div> : <div className="document-table-wrap"><table className="document-table"><thead><tr><th className="checkbox-cell"><input ref={allCheckbox} type="checkbox" aria-label="Select all documents on this page" checked={allSelected} onChange={() => setSelected(previous => { const next = new Set(previous); for (const row of pageItems) if (allSelected) next.delete(row.document.id); else next.add(row.document.id); return next; })} /></th><th>Document</th><th>Status</th><th className="date-cell">{view === "invoices" ? "Invoice date" : "Uploaded"}</th><th className="amount-cell">Amount</th><th className="row-action-cell"><span className="visually-hidden">Open</span></th></tr></thead><tbody>{pageItems.map(row => { const stage = stageOf(row); return <tr key={row.document.id} className={selected.has(row.document.id) ? "row-selected" : ""}><td className="checkbox-cell"><input type="checkbox" aria-label={`Select ${supplierOf(row)}`} checked={selected.has(row.document.id)} onChange={() => toggleSelection(row.document.id)} /></td><td><div className="document-name-cell"><span className={`document-type-icon ${row.document.contentType.startsWith("image") ? "image-file" : ""}`}><FileText size={21} /><small>{row.document.contentType.startsWith("image") ? "IMG" : "PDF"}</small></span><div><button className="document-link" onClick={() => openItem(row.document.id)}>{supplierOf(row)}</button><span className="document-filename">{view === "invoices" ? numberOf(row) : row.document.originalFileName}</span><span className="mobile-amount">{money(amountOf(row), currencyOf(row))}</span></div></div></td><td><StatusBadge stage={stage} /></td><td className="date-cell"><span>{dateLabel(view === "invoices" && row.invoice?.invoiceDate ? row.invoice.invoiceDate : row.document.uploadedAt)}</span><small>{view === "invoices" ? row.invoice?.dueDate ? `Due ${dateLabel(row.invoice.dueDate)}` : "No due date" : numberOf(row) || "Ready for extraction"}</small></td><td className="amount-cell"><strong>{money(amountOf(row), currencyOf(row))}</strong><small>{currencyOf(row) || "Not extracted"}</small></td><td className="row-action-cell"><button className="icon-button row-open" aria-label={`Open ${supplierOf(row)}`} onClick={() => openItem(row.document.id)}><ArrowUpRight size={17} /></button></td></tr>; })}</tbody></table></div>}
+        {loadError ? <div className="error-banner" role="alert"><CircleAlert size={19} /><div><strong>Let’s get you connected again.</strong><p>{loadError}</p></div><button className="button button-small" onClick={refresh}>Try again</button></div> : loading ? <div className="table-skeleton" aria-label="Loading documents" aria-busy="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span /><span /><span /></div>)}</div> : !visible.length ? <div className="empty-state"><span className="empty-icon">{search || filter !== "all" || currency || period !== "all" ? <Search size={25} /> : <Inbox size={28} />}</span><h3>{base.length ? "No documents match this view" : view === "invoices" ? "Your first saved invoice starts here" : "A fresh start for your paperwork"}</h3><p>{base.length ? "Try another search or clear your filters to see more." : view === "invoices" ? "Review a document and save its details to build your invoice library." : "Upload an invoice to keep the original and its details together."}</p><button className="button" onClick={() => base.length ? clearFilters() : view === "invoices" ? navigate("documents") : setUploadOpen(true)}>{base.length ? "Clear filters" : view === "invoices" ? "Go to documents" : "Upload your first document"}<ArrowRight size={15} /></button></div> : <div className="document-table-wrap"><table className="document-table"><thead><tr><th className="checkbox-cell"><input ref={allCheckbox} type="checkbox" aria-label="Select all documents on this page" checked={allSelected} onChange={() => setSelected(previous => { const next = new Set(previous); for (const row of pageItems) if (allSelected) next.delete(row.document.id); else next.add(row.document.id); return next; })} /></th><th>Document</th><th>Status</th><th className="date-cell">{view === "invoices" ? "Invoice date" : "Uploaded"}</th><th className="amount-cell">Amount</th><th className="row-action-cell"><span className="visually-hidden">Open</span></th></tr></thead><tbody>{pageItems.map(row => { const stage = stageOf(row); return <tr key={row.document.id} className={selected.has(row.document.id) ? "row-selected" : ""}><td className="checkbox-cell"><input type="checkbox" aria-label={`Select ${supplierOf(row)}`} checked={selected.has(row.document.id)} onChange={() => toggleSelection(row.document.id)} /></td><td><div className="document-name-cell"><span className={`document-type-icon ${row.document.contentType.startsWith("image") ? "image-file" : ""}`}><FileText size={21} /><small>{row.document.contentType.startsWith("image") ? "IMG" : "PDF"}</small></span><div><button className="document-link" onClick={() => openItem(row.document.id)}>{supplierOf(row)}</button><span className="document-filename">{view === "invoices" ? numberOf(row) : row.document.originalFileName}</span><span className="mobile-amount">{money(amountOf(row), currencyOf(row))}</span></div></div></td><td><StatusBadge stage={stage} queued={row.latestRun?.status === "Pending"} />{stage === "saved" && isAnalysisActive(row.latestRun) ? <span className="document-filename">{analysisLabel(row.latestRun!)}</span> : null}</td><td className="date-cell"><span>{dateLabel(view === "invoices" && row.invoice?.invoiceDate ? row.invoice.invoiceDate : row.document.uploadedAt)}</span><small>{view === "invoices" ? row.invoice?.dueDate ? `Due ${dateLabel(row.invoice.dueDate)}` : "No due date" : numberOf(row) || "Ready for extraction"}</small></td><td className="amount-cell"><strong>{money(amountOf(row), currencyOf(row))}</strong><small>{currencyOf(row) || "Not extracted"}</small></td><td className="row-action-cell"><button className="icon-button row-open" aria-label={`Open ${supplierOf(row)}`} onClick={() => openItem(row.document.id)}><ArrowUpRight size={17} /></button></td></tr>; })}</tbody></table></div>}
         <div className="table-footer"><span>{visible.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, visible.length)}` : "0"} of {visible.length} {view === "invoices" ? visible.length === 1 ? "invoice" : "invoices" : visible.length === 1 ? "document" : "documents"}{search ? " found" : ""}</span><div><label className="rows-per-page">Rows per page<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}><option>10</option><option>25</option><option>50</option></select></label><button className="icon-button" aria-label="Previous page" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={17} /></button><span className="page-number">{currentPage} / {pages}</span><button className="icon-button" aria-label="Next page" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={17} /></button></div></div>
       </section>
       <footer className="workspace-footer"><span><ShieldCheck size={15} />Your originals. Your data. Everything in one place.</span><span>{mode === "demo" ? "Sample data · Saved in this browser" : "Wida document workspace"}</span></footer>
@@ -297,6 +359,6 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     </main></div>
     <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} mode={mode} onUpload={onUpload} onReview={openItem} />
     <dialog ref={panelDialog} className="modal settings-modal" aria-labelledby="panel-title" onCancel={() => setPanel(null)} onClick={event => { if (event.target === event.currentTarget) setPanel(null); }}><div className="modal-header"><div className="modal-symbol">{panel === "help" ? <HelpCircle /> : <Settings2 />}</div><button className="icon-button" aria-label="Close dialog" onClick={() => setPanel(null)}><X size={19} /></button></div><h2 id="panel-title">{panel === "help" ? "A little guidance goes a long way." : "Make this workspace yours."}</h2>{panel === "help" ? <><p className="modal-description">Three simple steps to a lighter document workflow.</p><ol className="tour-steps"><li><span>1</span><div><strong>Bring your documents together</strong><p>Upload a PDF or image. In a connected workspace, Wida extracts the invoice details.</p></div></li><li><span>2</span><div><strong>Give the details a quick check</strong><p>Compare the fields with your original. Confirm uncertain values and add anything missing.</p></div></li><li><span>3</span><div><strong>Save it and move forward</strong><p>Find saved records in Invoices, edit their details, or export them as CSV.</p></div></li></ol><div className="keyboard-guide"><h3>Keyboard shortcuts</h3><p><span>Search documents</span><kbd>/</kbd></p><p><span>Upload documents</span><kbd>U</kbd></p><p><span>Open this guide</span><kbd>?</kbd></p><p><span>Close a dialog</span><kbd>Esc</kbd></p></div></> : <><p className="modal-description">A few preferences for your day-to-day work.</p><div className="setting-row"><div><strong>Appearance</strong><p>Choose the view that feels right.</p></div><div className="segmented-control">{["light", "dark"].map(value => <button key={value} aria-pressed={theme === value} onClick={() => { setTheme(value); try { localStorage.setItem("wida:theme:v1", value); } catch { /* Applied for this visit. */ } }}>{value === "light" ? "Light" : "Dark"}</button>)}</div></div><div className="connection-card"><div><span className="connection-dot" /><strong>{mode === "demo" ? "Demo workspace" : "Wida API workspace"}</strong></div><p>{mode === "demo" ? "You’re working with fictional samples. Your changes and uploaded files are saved on this device. Automatic extraction for new uploads is available when the API is connected." : "Documents and saved invoices are stored by your Wida server. In-progress form drafts stay in this browser tab until you save them."}</p></div><div className="setting-note"><ShieldCheck size={20} /><p>Processing and verification are separate steps. Wida keeps the original extraction confidence visible, even after you correct a value.</p></div></>}<div className="modal-footer"><span>Less paperwork. More clarity.</span><button className="button button-primary" onClick={() => setPanel(null)}>Got it<Check size={16} /></button></div></dialog>
-    {toast ? <div className="toast" role="status"><CheckCircle2 size={19} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast("")}><X size={15} /></button></div> : null}
+    {toast ? <div className="toast" role="status"><Bell size={19} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast("")}><X size={15} /></button></div> : null}
   </div>;
 }

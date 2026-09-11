@@ -8,7 +8,7 @@ export function mergeInvoiceResult(items: WorkspaceItem[], documentId: string, i
 
 export function mergeAnalysisResult(items: WorkspaceItem[], documentId: string, run: ProcessingRun): WorkspaceItem[] {
   return items.map(item => item.document.id === documentId
-    ? { ...item, latestRun: run, document: { ...item.document, documentType: "Invoice", status: item.invoice ? "Saved" : run.status === "Completed" ? "ReviewRequired" : run.status === "Failed" ? "Failed" : "Processing" } }
+    ? { ...item, latestRun: run, document: { ...item.document, documentType: "Invoice", status: item.invoice ? "Saved" : run.status === "Completed" ? "ReviewRequired" : run.status === "Failed" ? "Failed" : run.status === "Pending" ? "Queued" : "Processing" } }
     : item);
 }
 
@@ -22,4 +22,15 @@ export function nextReviewItem(items: WorkspaceItem[], queue: WorkspaceItem[], s
     if (queuedIds.has(candidate.document.id)) return candidate;
   }
   return undefined;
+}
+
+export function isAnalysisActive(run: ProcessingRun | null | undefined): boolean {
+  return run?.processor === "AzureDocumentIntelligence" && (run.status === "Pending" || run.status === "Running");
+}
+
+// Ignore a poll from an older run or one that would undo a terminal result.
+export function mergePolledAnalysis(items: WorkspaceItem[], run: ProcessingRun): WorkspaceItem[] {
+  const current = items.find(item => item.document.id === run.documentId)?.latestRun;
+  return current?.id === run.id && isAnalysisActive(current)
+    ? mergeAnalysisResult(items, run.documentId, run) : items;
 }

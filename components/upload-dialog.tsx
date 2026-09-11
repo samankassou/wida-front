@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Check, CircleAlert, FileText, LoaderCircle, UploadCloud, X, ArrowRight } from "lucide-react";
-import type { WorkspaceItem, WorkspaceMode } from "@/lib/types";
+import type { WorkspaceMode } from "@/lib/types";
 import { sizeLabel } from "@/lib/format";
+import type { UploadResult } from "@/lib/processing";
+import { analysisLabel } from "@/lib/processing";
 import { ApiError } from "@/lib/api";
 
-interface Entry { id: string; file: File; status: "ready" | "uploading" | "done" | "error"; message?: string; documentId?: string }
-interface Props { open: boolean; onClose: () => void; mode: WorkspaceMode; onUpload: (file: File, extract: boolean) => Promise<WorkspaceItem>; onReview: (id: string) => void }
+interface Entry { id: string; file: File; status: "ready" | "uploading" | "done" | "error"; message?: string; documentId?: string; warning?: boolean }
+interface Props { open: boolean; onClose: () => void; mode: WorkspaceMode; onUpload: (file: File, extract: boolean) => Promise<UploadResult>; onReview: (id: string) => void }
 export default function UploadDialog({ open, onClose, mode, onUpload, onReview }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -35,8 +37,8 @@ export default function UploadDialog({ open, onClose, mode, onUpload, onReview }
     for (const entry of ready) {
       setEntries(previous => previous.map(row => row.id === entry.id ? { ...row, status: "uploading", message: undefined } : row));
       try {
-        const item = await onUpload(entry.file, mode === "live" && extract);
-        setEntries(previous => previous.map(row => row.id === entry.id ? { ...row, status: "done", documentId: item.document.id, message: item.latestRun?.status === "Failed" ? "Uploaded. Extraction needs another try." : undefined } : row));
+        const { item, analysisError } = await onUpload(entry.file, mode === "live" && extract);
+        setEntries(previous => previous.map(row => row.id === entry.id ? { ...row, status: "done", documentId: item.document.id, warning: Boolean(analysisError) || item.latestRun?.status === "Failed", message: analysisError || (item.latestRun ? item.latestRun.status === "Pending" || item.latestRun.status === "Running" ? "Document saved. Analysis accepted; follow progress in Document activity." : `Document saved. ${analysisLabel(item.latestRun)}.` : "Document saved. Ready for manual entry.") } : row));
       } catch (cause) { setEntries(previous => previous.map(row => row.id === entry.id ? { ...row, status: "error", message: cause instanceof ApiError && cause.errors.file ? cause.errors.file : cause instanceof Error ? cause.message : "Upload failed. Please try again." } : row)); }
     }
     setBusy(false);
@@ -49,8 +51,9 @@ export default function UploadDialog({ open, onClose, mode, onUpload, onReview }
     <button type="button" className={`dropzone ${dragging ? "is-dragging" : ""}`} disabled={busy} onClick={() => input.current?.click()} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) addFiles(event.dataTransfer.files); }}><span className="dropzone-icon"><UploadCloud size={28} /></span><strong>Drop your documents here</strong><span>or <b>browse files</b> on your computer</span><small>PDF, PNG, JPG or TIFF · Up to 20 MB each</small></button>
     <input ref={input} type="file" className="visually-hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff" onChange={event => { if (event.target.files) addFiles(event.target.files); }} aria-label="Choose invoice files" tabIndex={-1} />
     {error ? <p role="alert" className="field-error upload-error">{error}</p> : null}
-    {entries.length ? <ul className="upload-list" aria-label="Selected files">{entries.map(entry => <li key={entry.id}><span className="file-icon"><FileText size={19} /></span><div><strong>{entry.file.name}</strong><small className={entry.status === "error" ? "field-error" : ""}>{entry.message || (entry.status === "uploading" ? mode === "live" && extract ? "Uploading and extracting…" : "Saving document…" : entry.status === "done" ? "Document added" : sizeLabel(entry.file.size))}</small></div>{entry.status === "uploading" ? <LoaderCircle size={19} className="spin" /> : entry.status === "done" ? <Check size={19} className="success-text" /> : <button className="icon-button" aria-label={`Remove ${entry.file.name}`} disabled={busy} onClick={() => setEntries(previous => previous.filter(row => row.id !== entry.id))}><X size={16} /></button>}</li>)}</ul> : null}
-    {mode === "live" ? <label className="check-label upload-option"><input type="checkbox" checked={extract} disabled={busy} onChange={event => setExtract(event.target.checked)} /><span><strong>Extract invoice details automatically</strong><small>You can review and correct every value before saving.</small></span></label> : null}
-    <div className="modal-footer"><span aria-live="polite">{done.length ? `${done.length} of ${entries.length} added` : "Your originals stay with each invoice."}</span>{done.length > 0 && !ready.length && !busy ? <button className="button button-primary" onClick={() => { const id = done[0].documentId!; close(); onReview(id); }}>Review document<ArrowRight size={16} /></button> : <button className="button button-primary" onClick={upload} disabled={!ready.length || busy}>{busy ? <LoaderCircle size={16} className="spin" /> : <UploadCloud size={16} />}{busy ? "Working…" : `Upload${ready.length ? ` ${ready.length} document${ready.length === 1 ? "" : "s"}` : " documents"}`}</button>}</div>
+    {entries.length ? <ul className="upload-list" aria-label="Selected files">{entries.map(entry => <li key={entry.id}><span className="file-icon"><FileText size={19} /></span><div><strong>{entry.file.name}</strong><small className={entry.status === "error" || entry.warning ? "field-error" : ""}>{entry.message || (entry.status === "uploading" ? mode === "live" && extract ? "Uploading and queuing…" : "Saving document…" : entry.status === "done" ? "Document added" : sizeLabel(entry.file.size))}</small></div>{entry.status === "uploading" ? <LoaderCircle size={19} className="spin" /> : entry.status === "done" && entry.warning ? <CircleAlert size={19} /> : entry.status === "done" ? <Check size={19} className="success-text" /> : <button className="icon-button" aria-label={`Remove ${entry.file.name}`} disabled={busy} onClick={() => setEntries(previous => previous.filter(row => row.id !== entry.id))}><X size={16} /></button>}</li>)}</ul> : null}
+    {mode === "live" ? <label className="check-label upload-option"><input type="checkbox" checked={extract} disabled={busy} onChange={event => setExtract(event.target.checked)} /><span><strong>Extract invoice details automatically</strong><small>Analysis runs in the background after upload. You can continue working while it finishes.</small></span></label> : null}
+    {done.length > 0 && !busy ? <p className="inline-note"><Check size={16} /><span>{mode === "live" ? "Your uploaded files are saved. You can close this window and follow progress in Document activity. If analysis could not start, open the document to try again." : "Your files are saved in this browser. Open a document to enter its details."}</span></p> : null}
+    <div className="modal-footer"><span aria-live="polite">{done.length ? `${done.length} of ${entries.length} added` : "Your originals stay with each invoice."}</span>{done.length > 0 && !ready.length && !busy ? <div className="upload-complete-actions"><button className="button" onClick={() => { const id = done[0].documentId!; close(); onReview(id); }}>Open document<ArrowRight size={16} /></button><button className="button button-primary" onClick={close}>Done</button></div> : <button className="button button-primary" onClick={upload} disabled={!ready.length || busy}>{busy ? <LoaderCircle size={16} className="spin" /> : <UploadCloud size={16} />}{busy ? "Working…" : `Upload${ready.length ? ` ${ready.length} document${ready.length === 1 ? "" : "s"}` : " documents"}`}</button>}</div>
   </dialog>;
 }

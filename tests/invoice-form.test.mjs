@@ -152,7 +152,7 @@ test("new extraction preserves user edits but invalidates checks, including rest
   edited.values.supplierName = "User correction";
   assert.equal(resolveDraft(source, edited), edited);
   source.latestRun = { ...source.latestRun, id: "replacement-run" };
-  for (const draft of [edited, JSON.parse(JSON.stringify(edited)), { values: edited.values, checkedFields: edited.checkedFields }]) {
+  for (const draft of [edited, JSON.parse(JSON.stringify(edited))]) {
     const resolved = resolveDraft(source, draft);
     assert.equal(resolved.values.supplierName, "User correction");
     assert.deepEqual(resolved.checkedFields, []);
@@ -226,18 +226,13 @@ test("shipping and discounts reconcile the actual invoice total and survive payl
   assert.ok(validateDraft(draft, source).shippingAmount);
 });
 
-test("discount extraction retains review flags and legacy drafts get empty adjustments", () => {
+test("discount extraction retains review flags", () => {
   const source = item();
   source.latestRun.extractedFields.push(field("TotalDiscount", { amount: 10 }, 0.7));
   const draft = createDraft(source);
   assert.equal(draft.values.discountAmount, "10");
   assert.ok(validateDraft(draft, source).discountAmount);
-  delete draft.values.shippingAmount;
-  delete draft.values.discountAmount;
-  const restored = resolveDraft(source, draft);
-  assert.equal(restored.values.shippingAmount, "");
-  assert.equal(restored.values.discountAmount, "");
-  assert.equal(restored.values.totalAmount, "1440");
+
 });
 
 
@@ -260,4 +255,18 @@ test("net unit prices and tax-inclusive lines reconcile without changing source 
   draft.values.lines[0].taxRate = "10";
   draft.values.lines[0].lineAmount = "124";
   assert.ok(validateDraft(draft, source)["lines.0.lineAmount"]);
+});
+
+test("completion of the same queued run preserves edits but invalidates premature checks", () => {
+  const source = item();
+  source.latestRun.status = "Pending";
+  source.latestRun.extractedFields = [];
+  const edited = createDraft(source);
+  edited.values.supplierName = "Manually corrected supplier";
+  edited.checkedFields = ["invoiceNumber"];
+  const completed = item();
+  const resolved = resolveDraft(completed, edited);
+  assert.equal(resolved.values.supplierName, "Manually corrected supplier");
+  assert.deepEqual(resolved.checkedFields, []);
+  assert.equal(resolved.extractionRunId, completed.latestRun.id);
 });
