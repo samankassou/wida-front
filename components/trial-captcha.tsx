@@ -15,7 +15,7 @@ export default function TrialCaptcha({ siteKey, session }: { siteKey: string; se
     if (!turnstile || !node.current || widget.current !== null) return;
     widget.current = turnstile.render(node.current, { sitekey: siteKey, action: "trial",
       callback: token => { void createApiClient(session).verifyChallenge(token)
-        .then(() => setStatus("Vérification réussie pour 10 minutes. Vous pouvez importer ou analyser."))
+        .then(() => setStatus("Vérification réussie. Vous pouvez importer vos documents."))
         .catch(() => setStatus("Vérification échouée. Rechargez la page pour réessayer.")); },
       "error-callback": () => setStatus("Vérification indisponible. Rechargez la page pour réessayer.") });
   }, [siteKey, session]);

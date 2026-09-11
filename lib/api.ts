@@ -38,7 +38,15 @@ async function request<T>(path: string, init?: RequestInit, session?: ApiSession
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const errors = normalizeFieldErrors(body?.errors);
-    throw new ApiError(typeof body?.detail === "string" ? body.detail : typeof body?.title === "string" ? body.title : "The request could not be completed. Please try again.", response.status, errors);
+    const message = response.status >= 500
+      ? "The service is temporarily unavailable. Please try again later."
+      : Object.keys(errors).length
+        ? "Please check the highlighted fields."
+        : typeof body?.detail === "string" ? body.detail
+          : response.status === 404 ? "We couldn’t find this document or invoice."
+            : response.status === 403 ? "This action is unavailable. Refresh the page and try again."
+              : "The request could not be completed. Please try again.";
+    throw new ApiError(message, response.status, errors);
   }
   return body as T;
 }

@@ -9,7 +9,7 @@ export default function ProcessingProgress({ run, submitting }: { run: Processin
   const step = requesting ? 0 : run?.status === "Pending" ? 1 : run?.status === "Running" || failed ? 2 : 3;
   const Icon = failed ? CircleAlert : step === 3 ? Check : step === 2 || requesting ? LoaderCircle : Clock3;
   return <section className={`processing-progress ${failed ? "has-error" : ""}`} aria-label="Document processing">
-    <div className="processing-progress-heading" role="status"><Icon size={20} className={step === 2 && !failed || requesting ? "spin" : ""} /><div><strong>{requesting ? "Requesting analysis…" : analysisLabel(run!)}</strong><p>{requesting ? "Your original is saved. Waiting for confirmation that analysis has been accepted." : analysisDescription(run!)}</p></div></div>
-    <ol className="processing-steps">{["Uploaded", "Queued", "Extracting", "Ready to review"].map((label, index) => <li key={label} className={index < step ? "is-complete" : index === step ? "is-current" : ""} aria-current={index === step ? "step" : undefined}><span>{index < step ? <Check size={12} /> : index + 1}</span>{failed && index === step ? "Needs attention" : label}</li>)}</ol>
+    <div className="processing-progress-heading" role="status"><Icon size={20} className={step === 2 && !failed || requesting ? "spin" : ""} /><div><strong>{requesting ? "Starting analysis…" : analysisLabel(run!)}</strong><p>{requesting ? "Your document is saved. You can keep working." : analysisDescription(run!)}</p></div></div>
+    <ol className="processing-steps">{["Uploaded", "Waiting", "Reading", "Ready to review"].map((label, index) => <li key={label} className={index < step ? "is-complete" : index === step ? "is-current" : ""} aria-current={index === step ? "step" : undefined}><span>{index < step ? <Check size={12} /> : index + 1}</span>{failed && index === step ? "Needs attention" : label}</li>)}</ol>
   </section>;
 }

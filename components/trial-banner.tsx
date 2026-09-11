@@ -14,7 +14,7 @@ export default function TrialBanner({ session, revision }: { session?: ApiSessio
     let active = true;
     const refresh = () => { void createApiClient(session).fetchTrial().then(value => {
       if (active) { setBalance(value); setError(""); }
-    }).catch(() => { if (active) setError("Solde indisponible. Le quota sera vérifié avant chaque analyse."); }); };
+    }).catch(() => { if (active) setError("Le nombre de pages restantes est temporairement indisponible."); }); };
     refresh();
     window.addEventListener("focus", refresh);
     return () => { active = false; window.removeEventListener("focus", refresh); };
@@ -38,7 +38,7 @@ export default function TrialBanner({ session, revision }: { session?: ApiSessio
       <div className="quota-heading"><span>Pages utilisées</span><strong>{balance ? `${number.format(used)} / ${number.format(total)}` : error ? "Indisponible" : "Chargement…"}</strong></div>
       {balance ? <><div className={`quota-track ${balance.pagesRemaining <= 0 ? "quota-exhausted" : ""}`} role="progressbar" aria-label="Pages d’analyse utilisées" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={Math.min(used, total)} aria-valuetext={`${used} pages utilisées sur ${total} accordées`}><span style={{ width: `${percent}%` }} /></div><p>{number.format(balance.pagesRemaining)} page{balance.pagesRemaining > 1 ? "s" : ""} restante{balance.pagesRemaining > 1 ? "s" : ""}</p></> : null}
       {error ? <p className="quota-error" role="status">{error}</p> : null}
-      {balance?.publicPagesRemaining === 0 ? <p className="quota-error">Budget mensuel épuisé. La consultation, la saisie et l’export restent disponibles.</p> : null}
+      {balance?.publicPagesRemaining === 0 ? <p className="quota-error">Les analyses sont suspendues pour ce mois-ci. Vous pouvez toujours consulter, compléter et exporter vos factures.</p> : null}
       <details className="quota-details"><summary>Détails et crédits</summary><p>Crédit unique, sans renouvellement. 2 pages et 4 Mio par fichier. {balance?.maximumDocuments ?? 10} documents. Originaux conservés {balance?.originalRetentionDays ?? 30} jours.</p><button className="button button-small" disabled={!balance || busy || balance.creditRequested} onClick={request}>{balance?.creditRequested ? "Demande enregistrée" : busy ? "Envoi…" : "Demander des crédits"}</button></details>
     </aside>
     {balance?.captchaSiteKey && verificationTarget ? createPortal(<div className="quota-verification"><TrialCaptcha siteKey={balance.captchaSiteKey} session={session} /></div>, verificationTarget) : null}

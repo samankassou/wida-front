@@ -8,7 +8,7 @@ export function stageOf(item: WorkspaceItem): DocumentStage {
   if (item.latestRun?.status === "Completed") return "review";
   return "uploaded";
 }
-export const stageLabels: Record<DocumentStage, string> = { review: "Needs review", saved: "Invoice saved", processing: "Processing", failed: "Extraction failed", uploaded: "Uploaded" };
+export const stageLabels: Record<DocumentStage, string> = { review: "Needs review", saved: "Invoice saved", processing: "Reading document", failed: "Analysis failed", uploaded: "Uploaded" };
 export function fieldValue(item: WorkspaceItem, fieldName: string): string {
   const field = item.latestRun?.extractedFields.find(field => field.fieldName === fieldName);
   if (!field) return "";

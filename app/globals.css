@@ -24,6 +24,8 @@ a { color: inherit; }
 .brand-mark { display: grid; place-items: center; width: 33px; height: 33px; background: var(--primary); color: white; border-radius: 9px; }
 .theme-dark .brand-mark { color: #17233c; }
 .brand-dot { color: var(--primary); margin-left: -10px; }
+.brand-beta { flex-shrink: 0; padding: 4px 6px; border-radius: 4px; background: var(--primary-soft); color: var(--primary); font-size: 10px; font-weight: 600; line-height: 1; letter-spacing: .02em; }
+.sidebar .brand { padding-inline: 4px; }
 .workspace-identity { border: 1px solid var(--border); background: var(--surface); border-radius: 9px; display: flex; align-items: center; gap: 10px; padding: 11px 10px; margin: 0 1px 27px; box-shadow: 0 2px 3px #1a2a4003; }
 .workspace-avatar, .profile-avatar, .topbar-avatar { display: grid; place-items: center; flex-shrink: 0; font-size: 14px; font-weight: 650; width: 32px; height: 32px; border: 1px solid var(--border); background: #f0ede7; border-radius: 7px; color: #726751; }
 .workspace-identity strong { font-size: 14px; }
@@ -260,8 +262,10 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); 
 .auth-message[role=alert]>svg { color: var(--red); }
 .auth-retry { width: 100%; margin-top: 12px; }
 .auth-loading { display: flex; align-items: center; gap: 11px; min-height: 49px; color: var(--muted); font-size: 13px; }
-.auth-privacy { border-top: 1px solid var(--border); padding-top: 23px; margin-top: 32px; display: flex; align-items: flex-start; gap: 11px; font-size: 12px; color: var(--muted); line-height: 1.8; }
-.auth-privacy>svg { margin-top: 2px; color: var(--green); }
+.auth-trial-details { margin-top: 24px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.auth-trial-details summary { cursor: pointer; width: fit-content; }
+.auth-trial-details p { margin-top: 10px; }
+.auth-trial-details summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
 @media(max-width:760px) {
   .auth-page { grid-template-columns: 1fr; }
   .auth-story { padding: 25px 26px 30px; border-right: 0; border-bottom: 1px solid var(--border); }
