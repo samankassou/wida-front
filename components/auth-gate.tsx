@@ -105,7 +105,7 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
   return <main className="workspace auth-page" lang="fr">
     <section className="auth-story" aria-label="Wida">
       <div className="brand"><span className="brand-mark"><ScanLine size={23} /></span>wida<span className="brand-dot">.</span></div>
-      <div className="auth-story-copy"><span className="eyebrow">VOS DOCUMENTS, SIMPLEMENT</span><h1>Moins de saisie.<br />{" "}Plus de clarté<span className="title-dot">.</span></h1><p>Rassemblez vos factures, vérifiez les informations extraites et retrouvez vos documents au même endroit.</p><div className="auth-benefit"><FileCheck2 size={21} /><span>De l’original à la facture vérifiée.</span></div></div>
+      <div className="auth-story-copy"><span className="eyebrow">VOS DOCUMENTS, SIMPLEMENT</span><h1>Moins de saisie.<br />{" "}Plus de clarté</h1><p>Rassemblez vos factures, vérifiez les informations extraites et retrouvez vos documents au même endroit.</p><div className="auth-benefit"><FileCheck2 size={21} /><span>De l’original à la facture vérifiée.</span></div></div>
       <span className="auth-story-footer">Un peu moins de paperasse, chaque jour.</span>
     </section>
     <section className="auth-form-section" aria-labelledby="login-title">
