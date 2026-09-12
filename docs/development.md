@@ -16,9 +16,9 @@ pnpm build
 
 The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, workspace updates/navigation, session credentials, CSRF headers on every mutation, session expiry, draft ownership isolation, extraction retry prefilling, and invalidation of checks on changed extraction runs. It does not exercise a browser, Google, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
 
-The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. This fallback passed on the development host on 10 September 2026; the normal `pnpm build` script remains unchanged. The host-specific permission failure does not require changing the application or disabling sandbox protections.
+The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. This fallback passed on the development host on 10 September 2026; the normal `pnpm build` script remains unchanged. This is a historical environment-specific result, not a requirement to use webpack. Run the current checks on your own checkout.
 
-## Verification results
+## Historical verification results
 
 Verified on 10 September 2026 against frontend commit `4f862b7` and API commit `2e4011e`:
 
@@ -28,7 +28,7 @@ Verified on 10 September 2026 against frontend commit `4f862b7` and API commit `
 - API regression tests covered saving during successful, failed, and cancelled extraction, plus saving after another context changed the document status. These processing tests use SQLite transactions; they do not validate production PostgreSQL behavior.
 - Real Google login and a live PostgreSQL/Azure workflow were not exercised in this verification.
 
-Earlier demo verification on 8 September covered manual lines, uploaded PNG preview and zoom/rotation, a 390 px mobile layout, themes, search/filter/export behavior, and review-next navigation. The screenshots retain their original capture provenance; they are not new captures from the 10 September checks.
+Earlier demo verification on 8 September covered manual lines, uploaded PNG preview and zoom/rotation, a 390 px mobile layout, themes, search/filter/export behavior, and review-next navigation. Those checks are historical. The documentation screenshots were refreshed separately on 12 September 2026; see [screenshot provenance](images/README.md).
 
 ## Manual browser checklist
 
@@ -48,14 +48,14 @@ Use a fresh browser profile or an expendable demo workspace for repeatable check
 For a configured live environment, also verify:
 
 - Before sign-in, show the Google login page and confirm no workspace/original requests are made. A missing Google configuration must display a setup message and never allow anonymous document access.
-- Sign in with an invited Google account. Verify name/email and sign-out, then try a non-invited account and a cancelled or failed Google callback.
-- Open two different invited accounts in separate browser profiles. Each must see only its own documents; copied original, invoice, and processing URLs from the other profile must not reveal records.
+- In public beta mode, sign in with a verified Google account. With `Authentication:PublicBeta=false`, verify invited-account access and non-invited-account rejection. Check name/email, sign-out, and cancelled or failed Google callbacks.
+- Open two different authorized accounts in separate browser profiles. Each must see only its own documents; copied original, invoice, and processing URLs from the other profile must not reveal records.
 - Edit an invoice, reload, and verify draft recovery. Expire the server session, then trigger a request: the workspace must close and the same account must recover its draft after signing in again. A different account must never load it.
 - Sign out with unsaved changes and cancel the confirmation to keep working. Confirm sign-out on a second attempt and check that sensitive UI and the current account's live drafts are cleared. In another open tab, the old workspace must close too. Use browser Back and return focus to verify the session is checked again.
 - Confirm upload, extraction, invoice creation/update, and sign-out carry `X-CSRF-TOKEN`; requests with a missing token or foreign Origin must be rejected by the server/proxy.
 - Upload and preview a supported original, save a manually entered invoice, refresh, and update it through the API.
-- Run extraction with valid Azure configuration, review its seven header fields, and confirm history and save behavior.
-- Exercise missing/invalid extraction configuration, invalid invoice input, duplicate creation, and interrupted requests. A processing response with HTTP `201` may still have `status: "Failed"`.
+- Run extraction with valid Azure configuration, review its eight supported header fields and line items, and confirm history and save behavior.
+- Exercise missing/invalid extraction configuration, invalid invoice input, duplicate creation, and interrupted requests. Analysis admission returns HTTP `202`; poll until the run is `Completed` or `Failed`. A manual run returns `200` and does not start extraction.
 - Reload after an interrupted analysis before retrying; the server may have persisted the run even when the browser did not receive its response.
 - While a live extraction is running, save a valid invoice from another tab of the same account. After extraction completes, fails, or is cancelled, refresh and confirm the document stays `Saved` while History reflects the run outcome.
 - Confirm the workspace's 500-document load limit is understood when checking counts, filters, and exports.
@@ -107,8 +107,8 @@ Review shows Uploaded → Queued → Extracting → Ready to review using server
 
 Browser checks: upload with extraction enabled; close the completed upload dialog; switch documents while waiting; open a completion notice; dismiss notices while active jobs remain; disconnect polling and reconnect; test queue admission 429/503 and an interrupted response; check the activity list and steps at 390px width. Use simulated analysis for UI checks to avoid consuming Azure quota.
 
-## Langues de l’interface
+## Interface languages
 
-L’interface propose le français (par défaut) et l’anglais via le sélecteur de la barre supérieure et de la page de connexion. Le cookie `wida-locale` conserve le choix pendant un an ; le layout le lit pour rendre la bonne langue dès la réponse serveur. Le changement de langue ne remonte pas l’espace de travail et conserve les brouillons en cours.
+The interface offers French (default) and English through the workspace and login language selectors. The `wida-locale` cookie remembers the choice for one year; the layout reads it for server rendering. Switching language preserves the workspace and current drafts.
 
-Les textes sont centralisés dans `lib/translations.ts`. Dans un composant, utiliser `useLanguage().t(message, values)` et des paramètres nommés (`{count}`, `{name}`) pour les textes variables. `formatLocale` fournit la locale pour les dates et montants d’affichage. Les valeurs des factures, les identifiants API et les valeurs numériques exportées ne sont pas traduits.
+Texts live in `lib/translations.ts`. Components use `useLanguage().t(message, values)` with named placeholders such as `{count}` and `{name}`. `formatLocale` supplies the locale for displayed dates and amounts. Invoice values, API identifiers, and exported numeric values are not translated.

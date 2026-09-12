@@ -1,6 +1,6 @@
 # Wida Frontend
 
-Wida is a document inbox and invoice review workspace built with Next.js, React, and TypeScript. Upload originals, compare extracted invoice details with their source, correct uncertain fields, and keep saved invoices together.
+Wida is an open-source document inbox and invoice review workspace built with Next.js, React, and TypeScript. Upload originals, compare extracted invoice details with their source, correct uncertain fields, and keep saved invoices together.
 
 ![Wida application document inbox with eight fictional demo documents.](docs/images/workspace-inbox.png)
 
@@ -19,9 +19,13 @@ Wida is a document inbox and invoice review workspace built with Next.js, React,
 
 *Current application: the low-confidence invoice number needs a check against the source before saving.*
 
-The [UI design guide](docs/ui-design.md) explains the workflow, current API integration, remaining work, and original concept. See [development and verification](docs/development.md) for a manual browser checklist and troubleshooting.
+Screenshots refreshed on 12 September 2026. See the [mobile review capture](docs/images/workspace-review-mobile.png) and [capture context](docs/images/README.md).
+
+See [development and verification](docs/development.md) for the browser checklist, storage behavior, and troubleshooting. The [current limits](#current-limits) distinguish implemented behavior from remaining work.
 
 ## Run the demo
+
+Clone the [frontend repository](https://github.com/samankassou/wida-front) first. The [API repository](https://github.com/samankassou/wida-api) is separate and optional for the demo.
 
 Use **Node.js 22.23.2 or newer supported 22.x, or Node.js 24+**, and **pnpm 12.3.4**. Node.js 22.23.2 is the baseline for the documented development and native TypeScript test commands.
 
@@ -117,7 +121,7 @@ components/
   document-preview.tsx       Sample, image, and native PDF previews
 lib/                        API client, contracts, demo data, form helpers, storage
 tests/                      Form/draft, auth, proxy, API-adapter, and workspace-state tests
-docs/                       UI guide, development notes, screenshots, original concept
+docs/                       Development notes, deployment checklist, and screenshots
 .env.example                Server-only API and public frontend origin examples
 ```
 
@@ -133,6 +137,8 @@ An expired session closes the live workspace and preserves drafts under their ow
 
 ## Contributing
 
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, issue reports, and pull request expectations. See the [deployment checklist](docs/deployment.md) before publishing your own instance.
+
 Update the docs when routes, environment settings, or behavior change. Run lint, the form tests, TypeScript checks, and a production build for application changes, then use the [browser checklist](docs/development.md#manual-browser-checklist) for affected workflows. Commit lockfile changes when dependencies change.
 
 Coding agents should read [AGENTS.md](AGENTS.md) and the relevant version-specific guides in `node_modules/next/dist/docs/` before changing application code.
@@ -143,10 +149,10 @@ This project is licensed under the [MIT Licence](LICENSE).
 
 ## Background analysis
 
-Connected analysis requests return immediately with a queued run. The workspace polls known active analyses every three seconds (ten seconds after retrieval errors), restores their state after reload, and preserves invoice edits when results arrive. Queued/running documents cannot be submitted again from the review screen. Queue capacity is enforced by the API; upload remains saved when analysis admission fails. Initialize the API database before starting the application. See [queue operations](../wida-api/docs/processing-queue.md).
+Connected analysis requests return immediately with a queued run. The workspace polls known active analyses every three seconds (ten seconds after retrieval errors), restores their state after reload, and preserves invoice edits when results arrive. Queued/running documents cannot be submitted again from the review screen. Queue capacity is enforced by the API; upload remains saved when analysis admission fails. Initialize the API database before starting the application. See [queue operations](https://github.com/samankassou/wida-api/blob/main/docs/processing-queue.md).
 
 ## Public beta
 
-`/demo` is always available without authentication, including when `WIDA_API_URL` is set. The connected workspace displays the lifetime page balance and accepts requests for additional credits. Files are limited to 2 pages/4 MiB; the API enforces all quotas. See the API public-beta guide for migration and operator commands.
+`/demo` is always available without authentication, including when `WIDA_API_URL` is set. The connected workspace displays the lifetime page balance and accepts requests for additional credits. Ordinary users are limited to 2 pages/4 MiB per file; the API enforces quotas and administrator exemptions. See the [API public-beta guide](https://github.com/samankassou/wida-api/blob/main/docs/public-beta.md) for migrations and operator commands.
 
 The workspace displays the authenticated profile. Administrators see “Sans quota Wida” and have no frontend upload quota or credit prompt. Authorization and exemptions are enforced by the API.
