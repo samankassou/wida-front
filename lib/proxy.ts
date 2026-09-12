@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 
 interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean; clientIpHeader?: string }
 
-const dataPath = /^(?:trial(?:\/(?:credits|challenge))?|documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
+const dataPath = /^(?:admin\/(?:metrics|users(?:\/[a-f0-9-]+\/trial)?)|trial(?:\/(?:credits|challenge))?|documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
 const authMethods: Record<string, string> = { "auth/session": "GET", "auth/login": "GET", "auth/callback": "GET", "auth/logout": "POST" };
 const redirectCodes = new Set([301, 302, 303, 307, 308]);
 

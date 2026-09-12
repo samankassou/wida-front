@@ -66,6 +66,20 @@ test("unknown auth paths, unsafe methods and unconfigured production fail closed
   assert.equal((await proxyRequest(request("auth/session"), "auth/session", { apiUrl: config.apiUrl, production: true })).status, 502);
 });
 
+test("admin endpoints preserve API authorization and CSRF protection", async (t) => {
+  const id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    assert.match(url.pathname, /^\/api\/admin\//);
+    if (init.method === "PUT") assert.equal(init.headers.get("x-csrf-token"), "csrf");
+    return Response.json({ title: "Access denied" }, { status: 403 });
+  });
+  for (const path of ["admin/metrics", "admin/users", `admin/users/${id}/trial`]) {
+    const init = path.endsWith("trial") ? { method: "PUT", headers: { origin: config.publicOrigin, "X-CSRF-TOKEN": "csrf" }, body: "{}" } : {};
+    assert.equal((await proxyRequest(request(path, init), path, config)).status, 403);
+  }
+  assert.equal((await proxyRequest(request("admin/secrets"), "admin/secrets", config)).status, 404);
+});
+
 test("only the configured ingress IP is forwarded, replacing caller-supplied IP headers", async (t) => {
   t.mock.method(globalThis, "fetch", async (_, init) => {
     assert.equal(init.headers.get("x-wida-client-ip"), "192.0.2.10");

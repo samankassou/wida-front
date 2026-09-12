@@ -1,0 +1,20 @@
+.modal.admin-modal { width: min(900px, calc(100vw - 32px)); max-width: 900px; }
+.admin-settings h3 { margin: 22px 0 12px; font-size: 16px; }
+.admin-settings p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.admin-toolbar, .admin-user-heading, .admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.admin-metrics>div, .admin-user { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.admin-metrics dt { font-size: 12px; color: var(--muted); }
+.admin-metrics dd { margin: 8px 0 0; font-size: 24px; font-weight: 600; }
+.admin-budget { margin-top: 12px; }
+.admin-search { display: grid; gap: 7px; margin: 16px 0; font-size: 13px; }
+.admin-settings input:not([type=checkbox]) { border: 1px solid var(--border); border-radius: 6px; padding: 9px; background: var(--surface); color: inherit; min-width: 0; }
+.admin-users { display: grid; gap: 12px; }
+.admin-user-heading strong, .admin-user-heading small { display: block; overflow-wrap: anywhere; }
+.admin-user-heading small { color: var(--muted); margin-top: 4px; }
+.admin-user fieldset { border: 0; padding: 0; margin: 12px 0 0; }
+.admin-allowance { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+.admin-allowance input { width: 110px; }
+.admin-credit { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; }
+.admin-pagination { justify-content: flex-end; margin-top: 16px; font-size: 12px; flex-wrap: wrap; }
+@media(max-width:580px) { .admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .admin-toolbar { align-items: flex-start; flex-direction: column; } }

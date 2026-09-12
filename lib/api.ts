@@ -58,6 +58,9 @@ export const logout = (session: ApiSession) => request<void>("auth/logout", { me
 // mutable module state during server rendering or between signed-in accounts.
 export function createApiClient(session?: ApiSession) {
   return {
+    fetchAdminMetrics: () => request<AdminMetrics>("admin/metrics", undefined, session),
+    fetchAdminUsers: (search: string, page: number) => request<AdminUserPage>(`admin/users?search=${encodeURIComponent(search)}&page=${page}`, undefined, session),
+    updateUserTrial: (id: string, pagesGranted: number, resolveCreditRequest: boolean) => request(`admin/users/${encodeURIComponent(id)}/trial`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pagesGranted, resolveCreditRequest }) }, session),
     fetchTrial: () => request<TrialBalance>("trial", undefined, session),
     verifyChallenge: (token: string) => request("trial/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, session),
     requestCredits: () => request<{ requested: boolean }>("trial/credits", { method: "POST" }, session),
@@ -74,3 +77,14 @@ export function createApiClient(session?: ApiSession) {
 }
 
 export interface TrialBalance { role?: "User" | "Admin"; unrestricted?: boolean; captchaSiteKey?: string; captchaVerified?: boolean; pagesRemaining: number; pagesGranted: number; publicPagesRemaining: number; creditRequested: boolean; maximumDocuments: number; originalRetentionDays: number }
+
+export interface AdminMetrics {
+  users: number; creditRequests: number; documents: number; invoices: number;
+  analysesCompleted: number; analysesFailed: number; analysesActive: number;
+  month: string; monthlyPagesUsed: number; monthlyPagesLimit: number;
+}
+export interface AdminUser {
+  id: string; email: string; displayName: string; role: string; createdAt: string;
+  pagesGranted: number; pagesUsed: number; creditRequestedAt: string | null;
+}
+export interface AdminUserPage { users: AdminUser[]; total: number; page: number; pageSize: number }
