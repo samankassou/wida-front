@@ -1,4 +1,6 @@
-interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean }
+import { isIP } from "node:net";
+
+interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean; clientIpHeader?: string }
 
 const dataPath = /^(?:trial(?:\/(?:credits|challenge))?|documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
 const authMethods: Record<string, string> = { "auth/session": "GET", "auth/login": "GET", "auth/callback": "GET", "auth/logout": "POST" };
@@ -34,12 +36,24 @@ export async function proxyRequest(request: Request, endpoint: string, configura
     if (request.method !== "GET" && request.headers.get("origin") !== origin)
       return Response.json({ title: "Invalid request origin" }, { status: 403 });
 
+    // The public ingress must OVERWRITE this header and be the only route to Next.js.
+    // Never infer an IP from caller-controlled X-Forwarded-For chains.
+    let clientIp: string | undefined;
+    if (configuration.clientIpHeader) {
+      clientIp = request.headers.get(configuration.clientIpHeader)?.trim();
+      if (!clientIp || !isIP(clientIp) || clientIp.includes("%"))
+        return Response.json({ title: "Client IP unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    } else if (configuration.production) {
+      return Response.json({ title: "Client IP configuration required" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    }
+
     const base = new URL(configuration.apiUrl);
     if (!["http:", "https:"].includes(base.protocol) || base.username || base.password || base.pathname !== "/" || base.search || base.hash)
       throw new Error("Invalid API origin");
     const url = new URL(`api/${endpoint}`, base);
     url.search = new URL(request.url).search;
     const headers = new Headers();
+    if (clientIp) headers.set("X-Wida-Client-IP", clientIp);
     for (const name of ["content-type", "range", "if-range", "x-csrf-token"]) {
       const value = request.headers.get(name); if (value) headers.set(name, value);
     }

@@ -65,3 +65,41 @@ test("unknown auth paths, unsafe methods and unconfigured production fail closed
   assert.equal((await proxyRequest(request("auth/logout"), "auth/logout", config)).status, 405);
   assert.equal((await proxyRequest(request("auth/session"), "auth/session", { apiUrl: config.apiUrl, production: true })).status, 502);
 });
+
+test("only the configured ingress IP is forwarded, replacing caller-supplied IP headers", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_, init) => {
+    assert.equal(init.headers.get("x-wida-client-ip"), "192.0.2.10");
+    assert.equal(init.headers.get("x-forwarded-for"), null);
+    return Response.json({});
+  });
+  const response = await proxyRequest(request("auth/session", { headers: {
+    "x-real-ip": "192.0.2.10", "x-wida-client-ip": "192.0.2.99", "x-forwarded-for": "192.0.2.99",
+  } }), "auth/session", { ...config, clientIpHeader: "x-real-ip" });
+  assert.equal(response.status, 200);
+});
+
+test("production refuses missing configuration and invalid ingress IPs before contacting API", async (t) => {
+  const mock = t.mock.method(globalThis, "fetch", async () => { throw new Error("must not fetch"); });
+  const production = { ...config, publicOrigin: "https://wida.example", production: true };
+  assert.equal((await proxyRequest(request("auth/session"), "auth/session", production)).status, 503);
+  for (const value of [undefined, "not-an-ip", "192.0.2.1, 192.0.2.2", "127.1", "fe80::1%eth0"]) {
+    const headers = new Headers();
+    if (value) headers.set("x-real-ip", value);
+    const response = await proxyRequest(request("auth/session", { headers }), "auth/session", {
+      ...production, clientIpHeader: "x-real-ip",
+    });
+    assert.equal(response.status, 503);
+  }
+  assert.equal(mock.mock.callCount(), 0);
+});
+
+test("development without trusted ingress configuration ignores all client IP headers", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_, init) => {
+    assert.equal(init.headers.get("x-wida-client-ip"), null);
+    assert.equal(init.headers.get("x-forwarded-for"), null);
+    return Response.json({});
+  });
+  assert.equal((await proxyRequest(request("auth/session", { headers: {
+    "x-real-ip": "192.0.2.99", "x-wida-client-ip": "192.0.2.99", "x-forwarded-for": "192.0.2.99",
+  } }), "auth/session", config)).status, 200);
+});
