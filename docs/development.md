@@ -106,3 +106,9 @@ The live workspace shows active analyses and up to ten recent completion/failure
 Review shows Uploaded → Queued → Extracting → Ready to review using server states, without an estimated duration or fabricated percentage. Existing edits remain usable. Upload success is distinct from analysis admission: capacity/service errors retain the original and offer status refresh/manual entry, without inventing a failed processing run or uploading the same file again.
 
 Browser checks: upload with extraction enabled; close the completed upload dialog; switch documents while waiting; open a completion notice; dismiss notices while active jobs remain; disconnect polling and reconnect; test queue admission 429/503 and an interrupted response; check the activity list and steps at 390px width. Use simulated analysis for UI checks to avoid consuming Azure quota.
+
+## Langues de l’interface
+
+L’interface propose le français (par défaut) et l’anglais via le sélecteur de la barre supérieure et de la page de connexion. Le cookie `wida-locale` conserve le choix pendant un an ; le layout le lit pour rendre la bonne langue dès la réponse serveur. Le changement de langue ne remonte pas l’espace de travail et conserve les brouillons en cours.
+
+Les textes sont centralisés dans `lib/translations.ts`. Dans un composant, utiliser `useLanguage().t(message, values)` et des paramètres nommés (`{count}`, `{name}`) pour les textes variables. `formatLocale` fournit la locale pour les dates et montants d’affichage. Les valeurs des factures, les identifiants API et les valeurs numériques exportées ne sont pas traduits.

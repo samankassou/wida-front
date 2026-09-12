@@ -428,3 +428,16 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); 
 .quota-demo-link { display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-top: 8px; color: var(--primary); font-size: 10px; text-decoration: none; }
 .quota-demo-link:hover { text-decoration: underline; }
 .quota-verification { margin-bottom: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); font-size: 12px; }
+
+.language-selector { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--text-secondary, inherit); }
+.language-selector select { min-height: 36px; padding: 6px 24px 6px 6px; border: 1px solid var(--border, #d9ddd9); border-radius: 8px; font: inherit; font-size: 13px; color: inherit; background: var(--surface, #fff); cursor: pointer; }
+.language-selector select:focus-visible { outline: 2px solid #16745a; outline-offset: 2px; }
+.auth-language { display: flex; justify-content: flex-end; margin-bottom: 24px; }
+@media (max-width: 600px) { .topbar { gap: 8px; } .topbar-actions { gap: 8px; } .language-selector { gap: 3px; } .language-selector select { max-width: 105px; } }
+@media (max-width: 600px) {
+  .topbar .breadcrumb { min-width: 0; flex: 1; }
+  .topbar .breadcrumb > .mobile-menu + span,
+  .topbar .breadcrumb > .mobile-menu + span + svg,
+  .topbar .connection-label { display: none; }
+  .topbar .breadcrumb > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

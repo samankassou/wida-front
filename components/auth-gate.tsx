@@ -1,4 +1,5 @@
 "use client";
+import { LanguageSelector, useLanguage } from "./language-provider";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -9,6 +10,7 @@ import { clearLiveDrafts } from "@/lib/storage";
 import Workspace from "./workspace";
 
 export default function AuthGate({ loginPage = false }: { loginPage?: boolean }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const params = useSearchParams();
   const [session, setSession] = useState<ActiveSession | null>(null);
@@ -102,22 +104,22 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
 
   const message = error || loginErrorMessage(params.get("error"));
   const returnUrl = loginPage ? "/" : `/${params.size ? `?${params.toString()}` : ""}`;
-  return <main className="workspace auth-page" lang="fr">
+  return <main className="workspace auth-page" >
     <section className="auth-story" aria-label="Wida">
-      <div className="brand"><span className="brand-mark"><ScanLine size={23} /></span>wida<span className="brand-dot">.</span><span className="brand-beta" lang="fr">Bêta</span></div>
-      <div className="auth-story-copy"><h1>Moins de saisie.<br />{" "}Plus de clarté.</h1><p>Vos factures, réunies au même endroit.</p></div>
+      <div className="brand"><span className="brand-mark"><ScanLine size={23} /></span>wida<span className="brand-dot">.</span><span className="brand-beta" >{t("Bêta")}</span></div>
+      <div className="auth-story-copy"><h1>{t("Moins de saisie.")}<br />{" "}{t("Plus de clarté.")}</h1><p>{t("Vos factures, réunies au même endroit.")}</p></div>
     </section>
     <section className="auth-form-section" aria-labelledby="login-title">
-      <div className="auth-card">
-        <h2 id="login-title">{reason === "expired" ? "Reprenez votre travail." : reason === "logout" ? "À bientôt." : "Bienvenue dans Wida."}</h2>
-        <p className="auth-description">{reason === "expired" ? "Reconnectez-vous avec le même compte pour retrouver vos brouillons." : reason === "logout" ? "Vous êtes déconnecté. Vos documents enregistrés vous attendent." : reason === "changed" ? "La connexion a changé dans un autre onglet. Vérifiez votre compte avant de continuer." : "4 pages offertes pour essayer, sans carte bancaire."}</p>
-        {message ? <div className="auth-message" role="alert"><CircleAlert size={18} /><p>{message}</p></div> : null}
-        {loading || (session?.user && loginPage) ? <div className="auth-loading" role="status"><LoaderCircle className="spin" size={20} />Vérification de votre session…</div> : <>
-          {googleConfigured ? <a className="button auth-google" href={`/api/wida/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`}><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.23c1.9-1.75 2.99-4.33 2.99-7.36Z" /><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.42l-3.23-2.5c-.9.6-2.05.97-3.39.97-2.61 0-4.82-1.76-5.61-4.13H3.05v2.6A10 10 0 0 0 12 22Z" /><path fill="#FBBC05" d="M6.39 13.92a6 6 0 0 1 0-3.84v-2.6H3.05a10 10 0 0 0 0 9.04l3.34-2.6Z" /><path fill="#EA4335" d="M12 5.95c1.47 0 2.79.5 3.82 1.49l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.95 5.48l3.34 2.6C7.18 7.71 9.39 5.95 12 5.95Z" /></svg>Continuer avec Google<ArrowRight size={17} /></a> : !error ? <div className="auth-message" role="status"><LockKeyhole size={19} /><p>La connexion est momentanément indisponible. Vous pouvez découvrir la démo.</p></div> : null}
-          {error || reason === "changed" || !googleConfigured ? <button className="button button-ghost auth-retry" onClick={() => { setLoading(true); void checkSession(); }}>Vérifier à nouveau</button> : null}
+      <div className="auth-card"><div className="auth-language"><LanguageSelector /></div>
+        <h2 id="login-title">{reason === "expired" ? t("Reprenez votre travail.") : reason === "logout" ? t("À bientôt.") : t("Bienvenue dans Wida.")}</h2>
+        <p className="auth-description">{reason === "expired" ? t("Reconnectez-vous avec le même compte pour retrouver vos brouillons.") : reason === "logout" ? t("Vous êtes déconnecté. Vos documents enregistrés vous attendent.") : reason === "changed" ? t("La connexion a changé dans un autre onglet. Vérifiez votre compte avant de continuer.") : t("4 pages offertes pour essayer, sans carte bancaire.")}</p>
+        {message ? <div className="auth-message" role="alert"><CircleAlert size={18} /><p>{t(message)}</p></div> : null}
+        {loading || (session?.user && loginPage) ? <div className="auth-loading" role="status"><LoaderCircle className="spin" size={20} />{t("Vérification de votre session…")}</div> : <>
+          {googleConfigured ? <a className="button auth-google" href={`/api/wida/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`}><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.23c1.9-1.75 2.99-4.33 2.99-7.36Z" /><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.42l-3.23-2.5c-.9.6-2.05.97-3.39.97-2.61 0-4.82-1.76-5.61-4.13H3.05v2.6A10 10 0 0 0 12 22Z" /><path fill="#FBBC05" d="M6.39 13.92a6 6 0 0 1 0-3.84v-2.6H3.05a10 10 0 0 0 0 9.04l3.34-2.6Z" /><path fill="#EA4335" d="M12 5.95c1.47 0 2.79.5 3.82 1.49l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.95 5.48l3.34 2.6C7.18 7.71 9.39 5.95 12 5.95Z" /></svg>{t("Continuer avec Google")}<ArrowRight size={17} /></a> : !error ? <div className="auth-message" role="status"><LockKeyhole size={19} /><p>{t("La connexion est momentanément indisponible. Vous pouvez découvrir la démo.")}</p></div> : null}
+          {error || reason === "changed" || !googleConfigured ? <button className="button button-ghost auth-retry" onClick={() => { setLoading(true); void checkSession(); }}>{t("Vérifier à nouveau")}</button> : null}
         </>}
-        <a className="button auth-retry" href="/demo">Découvrir la démo sans connexion</a>
-        <details className="auth-trial-details"><summary>À propos de l’essai</summary><p>2 pages et 4 Mio maximum par fichier, jusqu’à 10 documents. Les crédits ne se renouvellent pas automatiquement.</p><p>Les originaux sont conservés 30 jours. Vos factures et leur historique restent disponibles dans votre espace.</p></details>
+        <a className="button auth-retry" href="/demo">{t("Découvrir la démo sans connexion")}</a>
+        <details className="auth-trial-details"><summary>{t("À propos de l’essai")}</summary><p>{t("2 pages et 4 Mio maximum par fichier, jusqu’à 10 documents. Les crédits ne se renouvellent pas automatiquement.")}</p><p>{t("Les originaux sont conservés 30 jours. Vos factures et leur historique restent disponibles dans votre espace.")}</p></details>
       </div>
     </section>
   </main>;

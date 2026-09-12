@@ -28,5 +28,5 @@ export function amountOf(item: WorkspaceItem): number | null {
   return value && Number.isFinite(Number(value)) ? Number(value) : null;
 }
 export { money } from "./money";
-export const dateLabel = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(value));
+export const dateLabel = (value: string, locale = "en-GB") => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(value));
 export const sizeLabel = (value: number) => value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / (1024 * 1024)).toFixed(1)} MB`;

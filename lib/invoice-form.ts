@@ -154,22 +154,22 @@ export function taxInclusiveLineNet(line: InvoiceLineDraft): number | null {
   return net;
 }
 
-export function validateDraft(draft: ReviewDraft, item: WorkspaceItem): FieldErrors {
+export function validateDraft(draft: ReviewDraft, item: WorkspaceItem, t: (message: string, values?: Record<string, string | number>) => string = (message, values) => message.replace(/\{(\w+)\}/g, (match, key: string) => String(values?.[key] ?? match))): FieldErrors {
   const errors: FieldErrors = {};
   const values = draft.values;
   for (const field of ["supplierName", "invoiceNumber", "invoiceDate", "totalAmount"] as const) {
-    if (!values[field].trim()) errors[field] = `${fieldLabels[field]} is required.`;
+    if (!values[field].trim()) errors[field] = t("{field} is required.", { field: t(fieldLabels[field]) });
   }
   for (const field of ["invoiceDate", "dueDate"] as const) {
-    if (values[field].trim() && !isValidDate(values[field])) errors[field] = "Enter a valid calendar date.";
+    if (values[field].trim() && !isValidDate(values[field])) errors[field] = t("Enter a valid calendar date.");
   }
   if (isValidDate(values.invoiceDate) && isValidDate(values.dueDate) && values.dueDate < values.invoiceDate) {
-    errors.dueDate = "Due date cannot be before the invoice date.";
+    errors.dueDate = t("Due date cannot be before the invoice date.");
   }
   for (const field of ["subtotalAmount", "taxAmount", "shippingAmount", "discountAmount", "totalAmount"] as const) {
-    if (values[field].trim() && numericValue(values[field]) === null) errors[field] = "Enter an amount using a decimal point, for example 1200.00.";
+    if (values[field].trim() && numericValue(values[field]) === null) errors[field] = t("Enter an amount using a decimal point, for example 1200.00.");
   }
-  if (values.currency.trim() && !/^[a-zA-Z]{3}$/.test(values.currency.trim())) errors.currency = "Use a three-letter currency code, such as EUR or XAF.";
+  if (values.currency.trim() && !/^[a-zA-Z]{3}$/.test(values.currency.trim())) errors.currency = t("Use a three-letter currency code, such as EUR or XAF.");
   const subtotal = numericValue(values.subtotalAmount);
   const tax = numericValue(values.taxAmount);
   const total = numericValue(values.totalAmount);
@@ -177,32 +177,32 @@ export function validateDraft(draft: ReviewDraft, item: WorkspaceItem): FieldErr
   const discount = numericValue(values.discountAmount) ?? 0;
   const expectedTotal = (subtotal ?? 0) + (tax ?? 0) + shipping - discount;
   if (subtotal !== null && tax !== null && total !== null && !errors.shippingAmount && !errors.discountAmount && !amountMatches(expectedTotal, total)) {
-    errors.totalAmount = `Subtotal + tax + shipping − discount equals ${expectedTotal.toFixed(2)}. Check shipping and discounts against the document.`;
+    errors.totalAmount = t("Subtotal + tax + shipping − discount equals {amount}. Check shipping and discounts against the document.", { amount: expectedTotal.toFixed(2) });
   }
   values.lines.forEach((line, index) => {
     for (const field of Object.keys(lineExtractionFields) as LineField[]) {
       if (fieldNeedsCheck(getExtractedLineField(item, line, field)) && !draft.checkedFields.includes(lineCheckKey(line, field))) {
-        errors[`lines.${index}.${field}`] = "Check this value against the original document and mark it checked.";
+        errors[`lines.${index}.${field}`] = t("Check this value against the original document and mark it checked.");
       }
     }
     for (const field of ["quantity", "unitPrice", "taxRate", "taxAmount", "lineAmount"] as const) {
-      if (line[field].trim() && numericValue(line[field]) === null) errors[`lines.${index}.${field}`] = "Enter a valid number using a decimal point.";
+      if (line[field].trim() && numericValue(line[field]) === null) errors[`lines.${index}.${field}`] = t("Enter a valid number using a decimal point.");
     }
     const quantity = numericValue(line.quantity);
     const unitPrice = numericValue(line.unitPrice);
     const amount = numericValue(line.lineAmount);
     if (quantity !== null && unitPrice !== null && amount !== null && !amountMatches(quantity * unitPrice, amount) && taxInclusiveLineNet(line) === null) {
-      errors[`lines.${index}.lineAmount`] = `Quantity × unit price equals ${(quantity * unitPrice).toFixed(2)}. The line amount must match this or include the specified tax.`;
+      errors[`lines.${index}.lineAmount`] = t("Quantity × unit price equals {amount}. The line amount must match this or include the specified tax.", { amount: (quantity * unitPrice).toFixed(2) });
     }
   });
   const lineAmounts = values.lines.map((line) => taxInclusiveLineNet(line) ?? numericValue(line.lineAmount));
   if (subtotal !== null && lineAmounts.length > 0 && lineAmounts.every((amount) => amount !== null)) {
     const lineTotal = lineAmounts.reduce<number>((sum, amount) => sum + (amount ?? 0), 0);
-    if (!amountMatches(lineTotal, subtotal)) errors.subtotalAmount = `Line items total ${lineTotal.toFixed(2)}. Check the subtotal.`;
+    if (!amountMatches(lineTotal, subtotal)) errors.subtotalAmount = t("Line items total {amount}. Check the subtotal.", { amount: lineTotal.toFixed(2) });
   }
   for (const field of Object.keys(extractionFields) as (keyof typeof extractionFields)[]) {
     if (fieldNeedsCheck(getExtractedField(item, field)) && !draft.checkedFields.includes(field) && !errors[field]) {
-      errors[field] = "Check this value against the original document and mark it checked.";
+      errors[field] = t("Check this value against the original document and mark it checked.");
     }
   }
   return errors;
