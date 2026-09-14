@@ -4,7 +4,7 @@ Wida is an open-source document inbox and invoice review workspace built with Ne
 
 ![Wida application document inbox with eight fictional demo documents.](docs/images/workspace-inbox.png)
 
-*Current application in demo mode. The suppliers, invoices, and extraction results shown here are fictional.*
+*Demo interface in English. The suppliers, invoices, and extraction results shown here are fictional.*
 
 ## What works
 
@@ -17,9 +17,9 @@ Wida is an open-source document inbox and invoice review workspace built with Ne
 
 ![Wida application reviewing the fictional Atelier North invoice beside its source.](docs/images/workspace-review.png)
 
-*Current application: the low-confidence invoice number needs a check against the source before saving.*
+*In this capture, the low-confidence invoice number needs a check against the source before saving.*
 
-Screenshots refreshed on 12 September 2026. See the [mobile review capture](docs/images/workspace-review-mobile.png) and [capture context](docs/images/README.md).
+Screenshot files refreshed on 15 September 2026. See the [mobile review capture](docs/images/workspace-review-mobile.png) and [capture context](docs/images/README.md).
 
 See [development and verification](docs/development.md) for the browser checklist, storage behavior, and troubleshooting. The [current limits](#current-limits) distinguish implemented behavior from remaining work.
 
@@ -36,7 +36,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) for the French/English landing page. Use `/demo` for the demo, or `/workspace` for the workspace (Google sign-in in live mode). Existing `/?document=…` and `/?view=…` bookmarks redirect to the workspace. No environment file or backend is needed for demo mode. Leave `WIDA_API_URL` unset or empty; a value in `.env`, `.env.local`, or the process environment enables live mode. To use another port, run `pnpm dev --port 3001`.
+Open [http://localhost:3000](http://localhost:3000) for the French/English landing page. Use `/demo` for the demo, or `/workspace` for the workspace (Google sign-in in live mode). After session verification, the landing action changes from “Commencer” to “Mon espace” and links directly to `/workspace`. Successful Google sign-in also returns there; `/login` redirects existing sessions to the workspace. Existing `/?document=…` and `/?view=…` bookmarks redirect to the workspace. No environment file or backend is needed for demo mode. Leave `WIDA_API_URL` unset or empty; a value in `.env`, `.env.local`, or the process environment enables live mode. To use another port, run `pnpm dev --port 3001`.
 
 The demo starts with eight fictional documents. Edits, saved invoices, and drafts use this browser origin's local storage; files you upload are kept in IndexedDB. New uploads have empty invoice fields for manual entry. Only the seeded examples demonstrate extraction: the demo does not send your files to an extraction service or invent results for them.
 
@@ -59,7 +59,7 @@ WIDA_PUBLIC_ORIGIN=http://localhost:3000
 
 Restart the frontend server. The live workspace requires Google sign-in with a verified account. Configure the Google client credentials, the public beta setting, and `Authentication:PublicOrigin` in the API as described in its README. Register `http://localhost:3000/api/wida/auth/callback` as the Google OAuth redirect URI for local development. Credentials belong only in the backend's secrets; no Google client secret is configured in Next.js. If Google is not configured, Wida shows a configuration message and keeps document access protected.
 
-`WIDA_PUBLIC_ORIGIN` is the public frontend origin and must equal the API's `Authentication:PublicOrigin`. It is required for live production and should use HTTPS on a shared deployment. For a different local frontend port, update these two values and the Google redirect URI together.
+`WIDA_PUBLIC_ORIGIN` is the public frontend origin and must equal the API's `Authentication:PublicOrigin`. It is required for live production and should use HTTPS on a shared deployment. For a different local frontend port, update these two values and the Google redirect URI together. For Vercel + Render, also set `WIDA_PROXY_SECRET` and `WIDA_CLIENT_IP_HEADER=x-vercel-forwarded-for`; follow the [production configuration](docs/deployment.md#vercel-with-the-render-api).
 
 The workspace loads only the signed-in user's documents; it does not merge demo records into the backend. Automatic extraction additionally needs the API's Azure Document Intelligence configuration. Without Azure configuration, signed-in users can upload files and enter invoice details manually.
 
@@ -107,12 +107,15 @@ The test script runs `node --experimental-strip-types --test tests/*.test.mjs`. 
 
 ```text
 app/
-  page.tsx                   Selects demo or live workspace
+  page.tsx                   Public landing page and legacy bookmark redirects
+  workspace/page.tsx         Authenticated workspace, or demo when API is unset
+  demo/page.tsx              Always-public browser demo
   login/page.tsx             Google login errors and session check
   layout.tsx                 Wida metadata and root layout
   globals.css                Workspace styles and theme tokens
   api/wida/[...path]/route.ts Server-side API proxy
 components/
+  landing-page.tsx           Bilingual landing and session-aware primary action
   auth-gate.tsx              Live session gate, login, and session expiry
   workspace.tsx              Inbox, navigation, document actions, and review coordination
   use-review-drafts.ts       Edited draft recovery, persistence, and storage failures

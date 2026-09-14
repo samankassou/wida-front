@@ -16,19 +16,7 @@ pnpm build
 
 The Node test runner exercises extraction-to-form mapping, confidence checks, missing values, date and amount validation, payload conversion, saved invoice initialization, API error mapping, workspace updates/navigation, session credentials, CSRF headers on every mutation, session expiry, draft ownership isolation, extraction retry prefilling, and invalidation of checks on changed extraction runs. It does not exercise a browser, Google, PostgreSQL, or Azure. Lint and type checks do not establish end-to-end behavior; use the checklist below for the workflow you change.
 
-The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. This fallback passed on the development host on 10 September 2026; the normal `pnpm build` script remains unchanged. This is a historical environment-specific result, not a requirement to use webpack. Run the current checks on your own checkout.
-
-## Historical verification results
-
-Verified on 10 September 2026 against frontend commit `4f862b7` and API commit `2e4011e`:
-
-- All 35 frontend tests and 81 API tests passed. Frontend lint, TypeScript checks, and the webpack production build passed.
-- The default Turbopack build hit a host sandbox restriction when opening a local port; the webpack build succeeded.
-- In the demo browser, retrying a failed extraction filled the untouched form. A supplier edit survived another extraction and a reload, and the recovered draft saved successfully.
-- API regression tests covered saving during successful, failed, and cancelled extraction, plus saving after another context changed the document status. These processing tests use SQLite transactions; they do not validate production PostgreSQL behavior.
-- Real Google login and a live PostgreSQL/Azure workflow were not exercised in this verification.
-
-Earlier demo verification on 8 September covered manual lines, uploaded PNG preview and zoom/rotation, a 390 px mobile layout, themes, search/filter/export behavior, and review-next navigation. Those checks are historical. The documentation screenshots were refreshed separately on 12 September 2026; see [screenshot provenance](images/README.md).
+The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. Use the default build when supported; the fallback is for that host restriction, not a general requirement.
 
 ## Manual browser checklist
 
@@ -46,6 +34,10 @@ Use a fresh browser profile or an expendable demo workspace for repeatable check
 10. **Extraction retries:** in a fresh demo, open the failed Orchard Supply document and retry without editing; fields should populate. On Atelier North, correct and check the uncertain invoice number, use History → Run again, and confirm the correction remains but the check resets. Reload, check again, and save.
 
 For a configured live environment, also verify:
+
+- On `/`, a visitor sees “Commencer” linking to `/login`; after a verified session, it becomes “Mon espace” linking to `/workspace` (English equivalents also apply). The landing page remains public.
+- A successful Google callback lands on `/workspace`; `?document=…` is preserved. Opening `/login` while authenticated also leads to the workspace. External return URLs must not redirect off-site.
+- Return to a landing-page tab after signing in/out elsewhere, and use browser Back: its session-dependent action must refresh. Session lookup failure must leave the public landing/demo usable.
 
 - Before sign-in, show the Google login page and confirm no workspace/original requests are made. A missing Google configuration must display a setup message and never allow anonymous document access.
 - In public beta mode, sign in with a verified Google account. With `Authentication:PublicBeta=false`, verify invited-account access and non-invited-account rejection. Check name/email, sign-out, and cancelled or failed Google callbacks.
@@ -82,11 +74,11 @@ Drafts are browser recovery data, not a shared review log. Live drafts are scope
 | Symptom | Check |
 | --- | --- |
 | Demo appears instead of live records | Set server-only `WIDA_API_URL` in `.env.local` and restart the frontend. |
-| API connection error / proxy `502` | Confirm the API is listening at the configured origin. Use `http://localhost:5085` with `--launch-profile http`, or trusted HTTPS. Only approved authentication redirects pass through the proxy. |
+| API connection error / proxy `502` | Use a complete URL with its scheme, check API availability and redeploy changed environment variables. See [production troubleshooting](deployment.md#troubleshooting). Local HTTP is `http://localhost:5085`. |
 | Google setup message or callback failure | Check the API's Google client credentials, invitation list, and `Authentication:PublicOrigin`; this must match `WIDA_PUBLIC_ORIGIN` and the registered Google callback URI. |
 | Mutation rejected with proxy `403` | The request Origin is missing or differs from `WIDA_PUBLIC_ORIGIN`. Check the configured frontend origin. |
 | Mutation rejected with `400` and “Session verification failed” | Refresh the session to obtain its user-bound `X-CSRF-TOKEN` and antiforgery cookie, then retry. |
-| Data request returns `401` | Sign in again with the same invited account to recover its tab-local draft. |
+| Data request returns `401` | Sign in again with the same authorized account to recover its tab-local draft. |
 | Extraction fails after upload | Inspect History and the API's Azure configuration. The stored original can still be reviewed and entered manually. |
 | Source does not render | Open the original in a new tab. PDF/TIFF handling depends on the browser; unavailable files and invalid stored paths need backend investigation. |
 | Older documents missing from search/export | The frontend loads the latest 500 documents; current filters do not query beyond them. |
@@ -109,6 +101,6 @@ Browser checks: upload with extraction enabled; close the completed upload dialo
 
 ## Interface languages
 
-The interface offers French (default) and English through the workspace and login language selectors. The `wida-locale` cookie remembers the choice for one year; the layout reads it for server rendering. Switching language preserves the workspace and current drafts.
+The interface offers French (default) and English through the landing, workspace and login language selectors. The `wida-locale` cookie remembers the choice for one year; the layout reads it for server rendering. Switching language preserves the workspace and current drafts.
 
-Texts live in `lib/translations.ts`. Components use `useLanguage().t(message, values)` with named placeholders such as `{count}` and `{name}`. `formatLocale` supplies the locale for displayed dates and amounts. Invoice values, API identifiers, and exported numeric values are not translated.
+Workspace/login texts live in `lib/translations.ts`; landing copy lives in `components/landing-page.tsx`. Components use `useLanguage().t(message, values)` with named placeholders such as `{count}` and `{name}`. `formatLocale` supplies the locale for displayed dates and amounts. Invoice values, API identifiers, and exported numeric values are not translated.
