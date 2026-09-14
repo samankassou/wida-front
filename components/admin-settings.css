@@ -3,12 +3,12 @@
 .admin-settings p { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .admin-toolbar, .admin-user-heading, .admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.admin-metrics>div, .admin-user { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.admin-metrics>div, .admin-user { border: 1px solid var(--border); border-radius:var(--wida-radius-card); padding: 14px; }
 .admin-metrics dt { font-size: 12px; color: var(--muted); }
 .admin-metrics dd { margin: 8px 0 0; font-size: 24px; font-weight: 600; }
 .admin-budget { margin-top: 12px; }
 .admin-search { display: grid; gap: 7px; margin: 16px 0; font-size: 13px; }
-.admin-settings input:not([type=checkbox]) { border: 1px solid var(--border); border-radius: 6px; padding: 9px; background: var(--surface); color: inherit; min-width: 0; }
+.admin-settings input:not([type=checkbox]) { border: 1px solid var(--border); border-radius:var(--wida-radius-control); padding: 9px; background: var(--surface); color: inherit; min-width: 0; }
 .admin-users { display: grid; gap: 12px; }
 .admin-user-heading strong, .admin-user-heading small { display: block; overflow-wrap: anywhere; }
 .admin-user-heading small { color: var(--muted); margin-top: 4px; }

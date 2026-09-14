@@ -1,0 +1,52 @@
+/* Shared visual language for marketing, sign-in, and the application. */
+:root {
+  --wida-font: Arial, Helvetica, sans-serif;
+  --wida-bg: #f5f5f3;
+  --wida-surface: #ffffff;
+  --wida-text: #222320;
+  --wida-muted: #62675b;
+  --wida-border: #e0e3d9;
+  --wida-subtle: #f0f2eb;
+  --wida-accent: #647644;
+  --wida-accent-soft: #e9eddf;
+  --wida-action: #292c25;
+  --wida-action-hover: #3b4133;
+  --wida-on-action: #ffffff;
+  --wida-focus: #71864f;
+  --wida-success: #397350;
+  --wida-success-soft: #edf5ee;
+  --wida-warning: #91631b;
+  --wida-warning-soft: #fff5dd;
+  --wida-error: #ae4949;
+  --wida-error-soft: #fbeeee;
+  --wida-radius-small: 6px;
+  --wida-radius-control: 10px;
+  --wida-radius-card: 16px;
+  --wida-radius-panel: 24px;
+  --wida-radius-pill: 999px;
+  --wida-shadow: 0 4px 16px #242b1810;
+  --wida-action-shadow: 0 3px 7px #242b1820, inset 0 1px 0 #ffffff20;
+}
+
+.workspace.theme-dark {
+  --wida-bg: #191c17;
+  --wida-surface: #23271f;
+  --wida-text: #edf0e7;
+  --wida-muted: #acb3a3;
+  --wida-border: #3b4233;
+  --wida-subtle: #2b3025;
+  --wida-accent: #bfd197;
+  --wida-accent-soft: #333e26;
+  --wida-action: #d4e1b6;
+  --wida-action-hover: #e2edca;
+  --wida-on-action: #202819;
+  --wida-focus: #bfd197;
+  --wida-success: #9fd3af;
+  --wida-success-soft: #263d2e;
+  --wida-warning: #e9c479;
+  --wida-warning-soft: #3d3422;
+  --wida-error: #eda4a4;
+  --wida-error-soft: #412a29;
+  --wida-shadow: 0 4px 16px #00000020;
+  --wida-action-shadow: 0 3px 7px #00000020, inset 0 1px 0 #ffffff20;
+}

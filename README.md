@@ -36,7 +36,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No environment file or backend is needed for demo mode. Leave `WIDA_API_URL` unset or empty; a value in `.env`, `.env.local`, or the process environment enables live mode. To use another port, run `pnpm dev --port 3001`.
+Open [http://localhost:3000](http://localhost:3000) for the French/English landing page. Use `/demo` for the demo, or `/workspace` for the workspace (Google sign-in in live mode). Existing `/?document=…` and `/?view=…` bookmarks redirect to the workspace. No environment file or backend is needed for demo mode. Leave `WIDA_API_URL` unset or empty; a value in `.env`, `.env.local`, or the process environment enables live mode. To use another port, run `pnpm dev --port 3001`.
 
 The demo starts with eight fictional documents. Edits, saved invoices, and drafts use this browser origin's local storage; files you upload are kept in IndexedDB. New uploads have empty invoice fields for manual entry. Only the seeded examples demonstrate extraction: the demo does not send your files to an extraction service or invent results for them.
 
@@ -156,3 +156,7 @@ Connected analysis requests return immediately with a queued run. The workspace 
 `/demo` is always available without authentication, including when `WIDA_API_URL` is set. The connected workspace displays the lifetime page balance and accepts requests for additional credits. Ordinary users are limited to 2 pages/4 MiB per file; the API enforces quotas and administrator exemptions. See the [API public-beta guide](https://github.com/samankassou/wida-api/blob/main/docs/public-beta.md) for migrations and operator commands.
 
 The workspace displays the authenticated profile. Administrators see “Sans quota Wida” and have no frontend upload quota or credit prompt. Authorization and exemptions are enforced by the API.
+
+## Visual design
+
+`app/design-tokens.css` defines the shared palette, typography, corner radii, and shadows for the landing page, sign-in, workspace, invoice review, and administration. Change these tokens to evolve the visual identity consistently. Dark mode overrides the same semantic colors; warning, error, and success states keep distinct colors.

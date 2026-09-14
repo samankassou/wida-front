@@ -57,7 +57,7 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
       announceAuthChange(result.user.id);
       setReason(null);
       setLoading(false);
-      if (loginPage) router.replace("/");
+      if (loginPage) router.replace("/workspace");
     } catch (cause) {
       if (signal?.aborted || revision.current !== currentRevision) return;
       if (!sessionRef.current) setError(cause instanceof Error ? cause.message : "La connexion à Wida est indisponible. Réessayez dans un instant.");
@@ -103,7 +103,7 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
   if (session?.user && !loginPage) return <Workspace key={session.user.id} mode="live" user={session.user} apiSession={apiSession} onLogout={signOut} />;
 
   const message = error || loginErrorMessage(params.get("error"));
-  const returnUrl = loginPage ? "/" : `/${params.size ? `?${params.toString()}` : ""}`;
+  const returnUrl = loginPage ? "/workspace" : `/workspace${params.size ? `?${params.toString()}` : ""}`;
   return <main className="workspace auth-page" >
     <section className="auth-story" aria-label="Wida">
       <div className="brand"><span className="brand-mark"><ScanLine size={23} /></span>wida<span className="brand-dot">.</span><span className="brand-beta" >{t("Bêta")}</span></div>
