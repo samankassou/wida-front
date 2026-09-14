@@ -11,5 +11,5 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     }
     redirect(`/workspace?${query}`);
   }
-  return <LandingPage />;
+  return <LandingPage apiConfigured={Boolean(process.env.WIDA_API_URL)} />;
 }

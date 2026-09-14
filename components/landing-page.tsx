@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { fetchSession } from "@/lib/api";
+import { AUTH_CHANGE_KEY } from "@/lib/auth-state";
 import { ArrowRight, ArrowUpRight, Check, CheckCheck, FileText, FolderOpen, ScanLine, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { LanguageSelector, useLanguage } from "./language-provider";
 import styles from "./landing-page.module.css";
@@ -18,8 +21,40 @@ function Face({ happy = false }: { happy?: boolean }) {
   return <span className={`${styles.face} ${happy ? styles.happy : styles.sad}`} aria-hidden="true"><span /><span /><i /></span>;
 }
 
-export default function LandingPage() {
+export default function LandingPage({ apiConfigured = false }: { apiConfigured?: boolean }) {
   const { locale } = useLanguage();
+  const [authenticated, setAuthenticated] = useState(false);
+  useEffect(() => {
+    if (!apiConfigured) return;
+    let controller: AbortController | undefined;
+    let disposed = false;
+    const refresh = async () => {
+      if (disposed) return;
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      try {
+        const session = await fetchSession(current.signal);
+        if (!current.signal.aborted) setAuthenticated(session.authenticated && Boolean(session.user));
+      } catch {
+        if (!current.signal.aborted) setAuthenticated(false);
+      }
+    };
+    const focus = () => { void refresh(); };
+    const storage = (event: StorageEvent) => { if (event.key === AUTH_CHANGE_KEY) void refresh(); };
+    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) void refresh(); };
+    void refresh();
+    window.addEventListener("focus", focus);
+    window.addEventListener("storage", storage);
+    window.addEventListener("pageshow", pageshow);
+    return () => {
+      disposed = true;
+      controller?.abort();
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("pageshow", pageshow);
+    };
+  }, [apiConfigured]);
   const t = copy[locale];
   const icons = [Upload, ScanLine, FolderOpen];
   return <div className={styles.page}>
@@ -38,7 +73,7 @@ export default function LandingPage() {
           <p className={styles.eyebrow}><span className={styles.tinyMark}>✳</span>{t.tag}</p>
           <h1><span className={styles.muted}>{t.muted} <Face /></span><br />{t.line}<br className={styles.mobileBreak} /> <Face happy /> {t.end}</h1>
           <p className={styles.intro}>{t.intro}</p>
-          <div className={styles.actions}><Link href="/login" className={styles.primary}>{t.start}<ArrowRight size={18} /></Link><Link href="/demo" className={styles.secondary}>{t.demo}<ArrowUpRight size={17} /></Link></div>
+          <div className={styles.actions}><Link href={authenticated ? "/workspace" : "/login"} className={styles.primary}>{authenticated ? (locale === "fr" ? "Mon espace" : "My workspace") : t.start}<ArrowRight size={18} /></Link><Link href="/demo" className={styles.secondary}>{t.demo}<ArrowUpRight size={17} /></Link></div>
           <p className={styles.note}>{t.note}</p>
         </section>
         <section className={styles.comparison} aria-label={locale === "fr" ? "Avant et après Wida" : "Before and after Wida"}>

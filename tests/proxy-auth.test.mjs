@@ -51,6 +51,20 @@ test("cross-origin and missing-origin writes fail before contacting API", async 
   assert.equal(mock.mock.callCount(), 0);
 });
 
+test("Google callback reaches workspace with its session cookie and document bookmark", async (t) => {
+  let location = "http://localhost:3000/workspace?document=abc";
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 302, headers: {
+    Location: location, "Set-Cookie": "Wida.Session=opaque; Path=/; HttpOnly; SameSite=Lax",
+  } }));
+  const response = await proxyRequest(request("auth/callback"), "auth/callback", config);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), location);
+  assert.match(response.headers.getSetCookie()[0], /^Wida.Session=opaque;/);
+  for (location of ["https://evil.example/workspace", "//evil.example/workspace", "/workspace-other", "/workspace/../admin"]) {
+    assert.equal((await proxyRequest(request("auth/callback"), "auth/callback", config)).status, 502);
+  }
+});
+
 test("mutation forwards the antiforgery token and keeps backend status", async (t) => {
   t.mock.method(globalThis, "fetch", async (_, init) => {
     assert.equal(init.headers.get("x-csrf-token"), "bound-token");

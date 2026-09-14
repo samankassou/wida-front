@@ -14,7 +14,7 @@ function validRedirect(location: string, endpoint: string, origin: string): bool
   try {
     const url = new URL(location, origin);
     if (url.username || url.password) return false;
-    if (url.origin === origin && (url.pathname === "/" || url.pathname === "/login")) return true;
+    if (url.origin === origin && ["/", "/login", "/workspace"].includes(url.pathname)) return true;
     return endpoint === "auth/login" && url.origin === "https://accounts.google.com"
       && ["/o/oauth2/v2/auth", "/o/oauth2/auth"].includes(url.pathname);
   } catch { return false; }
