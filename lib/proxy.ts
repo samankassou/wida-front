@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 
-interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean; clientIpHeader?: string }
+interface ProxyConfiguration { apiUrl?: string; publicOrigin?: string; production?: boolean; clientIpHeader?: string; proxySecret?: string }
 
 const dataPath = /^(?:admin\/(?:metrics|users(?:\/[a-f0-9-]+\/trial)?)|trial(?:\/(?:credits|challenge))?|documents(?:\/workspace|\/[a-f0-9-]+(?:\/content)?)?|invoices(?:\/[a-f0-9-]+|\/document\/[a-f0-9-]+)?|processing(?:\/[a-f0-9-]+|\/documents\/[a-f0-9-]+(?:\/invoice)?)?)$/i;
 const authMethods: Record<string, string> = { "auth/session": "GET", "auth/login": "GET", "auth/callback": "GET", "auth/logout": "POST" };
@@ -50,9 +50,12 @@ export async function proxyRequest(request: Request, endpoint: string, configura
     const base = new URL(configuration.apiUrl);
     if (!["http:", "https:"].includes(base.protocol) || base.username || base.password || base.pathname !== "/" || base.search || base.hash)
       throw new Error("Invalid API origin");
+    if (configuration.proxySecret && (configuration.proxySecret.length < 32 || base.protocol !== "https:"))
+      throw new Error("Proxy secret requires HTTPS and at least 32 characters");
     const url = new URL(`api/${endpoint}`, base);
     url.search = new URL(request.url).search;
     const headers = new Headers();
+    if (configuration.proxySecret) headers.set("X-Wida-Proxy-Secret", configuration.proxySecret);
     if (clientIp) headers.set("X-Wida-Client-IP", clientIp);
     for (const name of ["content-type", "range", "if-range", "x-csrf-token"]) {
       const value = request.headers.get(name); if (value) headers.set(name, value);

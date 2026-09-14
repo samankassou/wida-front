@@ -26,6 +26,12 @@ Follow the [API deployment checklist](https://github.com/samankassou/wida-api/bl
 
 Verify Google sign-in on the public HTTPS origin, then upload, analyze, correct, save, reload, and export with fictional documents. Check account isolation and session expiry. `/demo` remains public even when the API is connected.
 
+## Render Free API
+
+For the backend setup and complete secret inventory, see the [Render guide](https://github.com/samankassou/wida-api/blob/main/docs/render-free.md). Set server-only `WIDA_PROXY_SECRET` to the API's `Authentication__ProxySecret`, using an HTTPS `WIDA_API_URL`. This authenticates the frontend proxy without requiring fixed outbound IPs. `WIDA_CLIENT_IP_HEADER` still must identify an ingress-overwritten single-IP header; user cookies, ownership and CSRF remain required.
+
+The first call after backend sleep can exceed the proxy's 60-second timeout. Retry after the backend wakes; mutations are not automatically replayed. Verify the frontend host's own request duration and multipart size limits. The API health probe reports process liveness only.
+
 ## Public presentation
 
 Check mobile and keyboard use, the page title/description, and the image and text shown when sharing the link. Review the generated page metadata and add sharing assets where needed; this checklist does not imply those assets are already implemented. Link visitors directly to `/demo` when an account should not be required.

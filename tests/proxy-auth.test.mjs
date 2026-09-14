@@ -117,3 +117,24 @@ test("development without trusted ingress configuration ignores all client IP he
     "x-real-ip": "192.0.2.99", "x-wida-client-ip": "192.0.2.99", "x-forwarded-for": "192.0.2.99",
   } }), "auth/session", config)).status, 200);
 });
+
+test("public API proxy uses only its server secret, never the caller header", async (t) => {
+  const secret = "server-only-secret-".repeat(3);
+  t.mock.method(globalThis, "fetch", async (_, init) => {
+    assert.equal(init.headers.get("x-wida-proxy-secret"), secret);
+    return Response.json({});
+  });
+  const response = await proxyRequest(request("auth/session", { headers: { "X-Wida-Proxy-Secret": "attacker" } }),
+    "auth/session", { ...config, apiUrl: "https://api.example.test", proxySecret: secret });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-wida-proxy-secret"), null);
+});
+
+test("proxy refuses to transmit its secret over HTTP or with a short configured value", async (t) => {
+  const mock = t.mock.method(globalThis, "fetch", async () => { throw new Error("must not fetch"); });
+  for (const candidate of [{ ...config, proxySecret: "s".repeat(48) },
+    { ...config, apiUrl: "https://api.example.test", proxySecret: "short" }]) {
+    assert.equal((await proxyRequest(request("auth/session"), "auth/session", candidate)).status, 502);
+  }
+  assert.equal(mock.mock.callCount(), 0);
+});

@@ -20,8 +20,8 @@ test("trial balance, credit and challenge routes pass through the protected prox
   globalThis.fetch = async () => Response.json({ ok: true });
   try {
     for (const [endpoint, method] of [["trial", "GET"], ["trial/credits", "POST"], ["trial/challenge", "POST"]]) {
-      const response = await proxyRequest(new Request(`https://wida.test/api/wida/${endpoint}`, { method, headers: { origin: "https://wida.test" } }), endpoint,
-        { apiUrl: "http://localhost:5085", publicOrigin: "https://wida.test", production: true });
+      const response = await proxyRequest(new Request(`https://wida.test/api/wida/${endpoint}`, { method, headers: { origin: "https://wida.test", "x-real-ip": "192.0.2.1" } }), endpoint,
+        { apiUrl: "http://localhost:5085", publicOrigin: "https://wida.test", production: true, clientIpHeader: "x-real-ip" });
       assert.equal(response.status, 200);
     }
   } finally { globalThis.fetch = previous; }
