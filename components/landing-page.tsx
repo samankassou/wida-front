@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fetchSession } from "@/lib/api";
 import { AUTH_CHANGE_KEY } from "@/lib/auth-state";
-import { ArrowRight, ArrowUpRight, Check, CheckCheck, FileText, FolderOpen, ScanLine, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, CheckCheck, FileText, FolderOpen, ScanLine, Search, Sparkles, Upload } from "lucide-react";
 import { LanguageSelector, useLanguage } from "./language-provider";
+import { CreatorCredit } from "./creator-credit";
 import styles from "./landing-page.module.css";
 
 const copy = {
@@ -111,7 +112,10 @@ export default function LandingPage({ apiConfigured = false }: { apiConfigured?:
         </section>
         <section className={styles.closing}><div><h2>{t.close}</h2><p>{t.closeText}</p></div><Link href="/demo" className={styles.primary}>{t.demo}<ArrowRight size={18} /></Link></section>
       </main>
-      <footer className={styles.footer}><Link href="/" className={styles.logo}>wida<span>.</span></Link><p>{t.footer}</p><ShieldCheck size={19} aria-hidden="true" /></footer>
+      <footer className={styles.footer}>
+        <div className={styles.footerBrand}><Link href="/" className={styles.logo}>wida<span>.</span></Link><p>{t.footer}</p></div>
+        <CreatorCredit />
+      </footer>
     </div>
   </div>;
 }

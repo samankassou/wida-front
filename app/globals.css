@@ -456,3 +456,6 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); 
 .workspace .workspace-avatar, .workspace .profile-avatar, .workspace .topbar-avatar { background: var(--primary-soft); color: var(--primary); }
 .workspace .auth-google { border-color: var(--border); box-shadow: var(--wida-shadow); }
 @media (prefers-reduced-motion: reduce) { .workspace button { transition: none; } }
+
+.creator-footer { margin: 0 36px; padding: 18px 0 24px; border-top: 1px solid var(--border); }
+@media(max-width:580px) { .creator-footer { margin-inline: 14px; } }
