@@ -1,5 +1,15 @@
 // English message keys with French translations. Keep interpolation names identical.
 export const messages: Record<string, { en: string; fr: string }> = {
+  "Unable to open the matching invoice.": {"en": "Unable to open the matching invoice.", "fr": "Impossible d’ouvrir la facture correspondante."},
+  "{done} of {total} processed": {"en": "{done} of {total} processed", "fr": "{done} sur {total} traités"},
+  "Existing document found. Its original file was restored; no new analysis was requested.": {"en": "Existing document found. Its original file was restored; no new analysis was requested.", "fr": "Document existant retrouvé. Son original a été restauré ; aucune nouvelle analyse n’a été demandée."},
+  "This exact file already exists. No new document or analysis was created.": {"en": "This exact file already exists. No new document or analysis was created.", "fr": "Ce fichier existe déjà. Aucun nouveau document ni aucune analyse n’a été créé."},
+  "Open existing document": {"en": "Open existing document", "fr": "Ouvrir le document existant"},
+  "Save anyway": {"en": "Save anyway", "fr": "Enregistrer quand même"},
+  "I reviewed the match and want to save this invoice anyway.": {"en": "I reviewed the match and want to save this invoice anyway.", "fr": "J’ai vérifié la correspondance et je souhaite quand même enregistrer cette facture."},
+  "Open matching invoice": {"en": "Open matching invoice", "fr": "Ouvrir la facture correspondante"},
+  "Possible duplicate invoice": {"en": "Possible duplicate invoice", "fr": "Doublon de facture possible"},
+  "A saved invoice has the same supplier and invoice number. Review it before saving.": {"en": "A saved invoice has the same supplier and invoice number. Review it before saving.", "fr": "Une facture enregistrée porte le même fournisseur et le même numéro. Vérifiez-la avant d’enregistrer."},
   "Original PDF page {page}": {"en": "Original PDF page {page}", "fr": "Page {page} du PDF original"},
   "Page {page} of {count}": {"en": "Page {page} of {count}", "fr": "Page {page} sur {count}"},
   "Highlight preview unavailable. Open the original to review this document.": {"en": "Highlight preview unavailable. Open the original to review this document.", "fr": "Aperçu avec surlignage indisponible. Ouvrez l’original pour vérifier ce document."},

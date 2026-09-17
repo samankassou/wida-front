@@ -110,3 +110,9 @@ Browser checks: upload with extraction enabled; close the completed upload dialo
 The interface offers French (default) and English through the landing, workspace and login language selectors. The `wida-locale` cookie remembers the choice for one year; the layout reads it for server rendering. Switching language preserves the workspace and current drafts.
 
 Workspace/login texts live in `lib/translations.ts`; landing copy lives in `components/landing-page.tsx`. Components use `useLanguage().t(message, values)` with named placeholders such as `{count}` and `{name}`. `formatLocale` supplies the locale for displayed dates and amounts. Invoice values, API identifiers, and exported numeric values are not translated.
+
+### Duplicate detection checks
+
+Upload the same file under two names: there should be one document, a clear duplicate message, and an **Open existing document** action. In live mode, verify the duplicate does not submit another analysis or debit credits. Same-name, same-size files with different bytes must remain separate uploads. Restore an expired/missing original and confirm its invoice and processing history remain intact.
+
+Save a second document with an existing invoice’s supplier and number (including case/whitespace variants). Verify the warning, matching-record navigation, preserved draft, explicit override, and acknowledgement reset after edits. Editing an invoice without changing its identity must not match itself. Same numbers from other suppliers or other accounts must not warn or disclose matches. Check a live match outside the most recent 500 documents and verify its open action.

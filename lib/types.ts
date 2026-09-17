@@ -22,6 +22,8 @@ export interface DocumentRecord {
   status: string;
   uploadedAt: string;
   pageCount?: number;
+  /** SHA-256 for browser-local demo uploads only. */
+  contentHash?: string;
 }
 
 export interface ExtractedField {
@@ -127,3 +129,5 @@ export interface WorkspaceItem {
 
 export type DocumentStage = "review" | "processing" | "saved" | "failed" | "uploaded";
 export type FieldErrors = Record<string, string>;
+
+export type DuplicateInvoice = Pick<Invoice, "id" | "documentId" | "supplierName" | "invoiceNumber" | "invoiceDate" | "currency" | "totalAmount">;

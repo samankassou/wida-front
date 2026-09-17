@@ -1,6 +1,8 @@
 "use client";
 import { useLanguage } from "./language-provider";
 
+import { DuplicateInvoiceError } from "@/lib/api";
+import type { DuplicateInvoice } from "@/lib/types";
 import ProcessingProgress from "./processing-progress";
 import { analysisFailureMessage, analysisLabel } from "@/lib/processing";
 
@@ -15,7 +17,8 @@ interface Props {
   item: WorkspaceItem;
   draft: ReviewDraft;
   onDraftChange: (draft: ReviewDraft) => void;
-  onSave: (draft: ReviewDraft) => Promise<void>;
+  onSave: (draft: ReviewDraft, allowDuplicate?: boolean) => Promise<void>;
+  onOpenDuplicate: (documentId: string) => void;
   onBack: () => void;
   onNext: () => void;
   hasNext: boolean;
@@ -77,7 +80,7 @@ function errorLabel(key: string, t: (text: string, values?: Record<string, strin
   return t(fieldLabels[key as HeaderField] || "Invoice");
 }
 
-export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBack, onNext, hasNext, saving, mode, sourceUrl, runs, onAnalyze, analyzing, serverErrors, error }: Props) {
+export default function InvoiceReview({ item, draft, onDraftChange, onSave, onOpenDuplicate, onBack, onNext, hasNext, saving, mode, sourceUrl, runs, onAnalyze, analyzing, serverErrors, error }: Props) {
   const { t, formatLocale } = useLanguage();
   const [tab, setTab] = useState<Tab>("details");
   const [mobilePanel, setMobilePanel] = useState<"document" | "fields">("fields");
@@ -85,11 +88,16 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   const [sourceSelection, setSourceSelection] = useState(0);
   const [touched, setTouched] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ signature: string; matches: DuplicateInvoice[]; confirmed: boolean } | null>(null);
   const [feedback, setFeedback] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const currentErrors = { ...validateDraft(draft, item, t), ...serverErrors };
   const issueKeys = Object.keys(currentErrors);
   const values = draft.values;
+  const signature = JSON.stringify(values);
+  if (duplicateWarning && duplicateWarning.signature !== signature) setDuplicateWarning(null);
+  const duplicates = duplicateWarning?.signature === signature ? duplicateWarning : null;
+  const needsReview = issueKeys.length > 0 || Boolean(duplicates && !duplicates.confirmed);
   const baseline = createDraft(item);
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline.values);
   const activeLine = /^lines\.(\d+)\.(\w+)$/.exec(activeField);
@@ -145,10 +153,15 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
       return;
     }
     try {
-      await onSave(draft);
+      await onSave(draft, duplicates?.confirmed === true);
+      setDuplicateWarning(null);
       setFeedback(mode === "demo" ? "Invoice saved in your demo workspace." : "Invoice saved successfully.");
       setSubmitted(false);
-    } catch {
+    } catch (cause) {
+      if (cause instanceof DuplicateInvoiceError) {
+        setDuplicateWarning({ signature, matches: cause.matches, confirmed: false });
+        requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(".rv-duplicate-warning")?.focus());
+      }
       // The workspace owns transport errors and field errors so they remain visible here.
     }
   }
@@ -182,7 +195,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   return (
     <div className="rv-workspace" ref={root}>
       <div className="rv-breadcrumb"><button type="button" onClick={onBack}><ArrowLeft size={15} />{t("Documents")}</button><ChevronRight size={13} aria-hidden="true" /><span>{item.invoice ? t("Invoice details") : t("Review document")}</span></div>
-      <header className="rv-heading"><div className="rv-heading-main"><div className="rv-file-icon"><FileText size={24} /></div><div><h1>{values.supplierName || item.document.originalFileName}</h1><p>{item.document.originalFileName}<span>·</span>{item.sample ? t("1 page") : item.document.contentType === "application/pdf" ? t("PDF document") : t("Image document")}{mode === "demo" ? <><span>·</span>{item.sample ? t("Sample data") : t("Stored in this browser")}</> : null}</p></div></div><div className="rv-heading-actions"><span className={`badge ${item.invoice && !dirty ? "badge-saved" : issueKeys.length ? "badge-review" : "badge-processing"}`}>{item.invoice && !dirty ? <CheckCheck size={13} /> : issueKeys.length ? <CircleAlert size={13} /> : <ShieldCheck size={13} />}{item.invoice && !dirty ? t("Invoice saved") : issueKeys.length ? t("Needs review") : t("Ready to save")}</span>{hasNext ? <button type="button" className="button button-ghost button-small" onClick={onNext} disabled={saving}>{t("Next document")}<ArrowRight size={15} /></button> : null}</div></header>
+      <header className="rv-heading"><div className="rv-heading-main"><div className="rv-file-icon"><FileText size={24} /></div><div><h1>{values.supplierName || item.document.originalFileName}</h1><p>{item.document.originalFileName}<span>·</span>{item.sample ? t("1 page") : item.document.contentType === "application/pdf" ? t("PDF document") : t("Image document")}{mode === "demo" ? <><span>·</span>{item.sample ? t("Sample data") : t("Stored in this browser")}</> : null}</p></div></div><div className="rv-heading-actions"><span className={`badge ${item.invoice && !dirty ? "badge-saved" : needsReview ? "badge-review" : "badge-processing"}`}>{item.invoice && !dirty ? <CheckCheck size={13} /> : needsReview ? <CircleAlert size={13} /> : <ShieldCheck size={13} />}{item.invoice && !dirty ? t("Invoice saved") : needsReview ? t("Needs review") : t("Ready to save")}</span>{hasNext ? <button type="button" className="button button-ghost button-small" onClick={onNext} disabled={saving}>{t("Next document")}<ArrowRight size={15} /></button> : null}</div></header>
 
       <div className="rv-mobile-tabs" aria-label={t("Review panels")}><button type="button" aria-pressed={mobilePanel === "document"} onClick={() => setMobilePanel("document")}><FileText size={15} />{t("Original document")}</button><button type="button" aria-pressed={mobilePanel === "fields"} onClick={() => setMobilePanel("fields")}><Layers3 size={15} />{t("Invoice details")}{issueKeys.length ? <span>{issueKeys.length}</span> : null}</button></div>
 
@@ -196,10 +209,20 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
           <form noValidate onSubmit={save} className="rv-form">
             <fieldset disabled={saving} className="rv-fieldset">
               <div className="rv-form-content">
+                {duplicates ? <section className="rv-duplicate-warning" role="alert" tabIndex={-1} aria-labelledby="duplicate-title">
+                  <h3 id="duplicate-title">{t("Possible duplicate invoice")}</h3>
+                  <p>{t("A saved invoice has the same supplier and invoice number. Review it before saving.")}</p>
+                  <ul>{duplicates.matches.map(match => <li key={match.id}>
+                    <strong>{match.supplierName} · {match.invoiceNumber}</strong>
+                    <span>{match.invoiceDate || "—"} · {match.totalAmount ?? "—"} {match.currency}</span>
+                    <button type="button" className="button button-small" onClick={() => onOpenDuplicate(match.documentId)}>{t("Open matching invoice")}<ArrowRight size={14} /></button>
+                  </li>)}</ul>
+                  <label className="check-label"><input type="checkbox" checked={duplicates.confirmed} onChange={event => setDuplicateWarning({ ...duplicates, confirmed: event.target.checked })} />{t("I reviewed the match and want to save this invoice anyway.")}</label>
+                </section> : null}
                 {error ? <div className="rv-error-banner" role="alert"><CircleAlert size={17} /><div><strong>{t("We couldn’t complete that action")}</strong><p>{t(error)}</p></div></div> : null}
                 {submitted && issueKeys.length ? <div className="rv-validation-summary" role="alert"><strong>{t("Check")} {issueKeys.length} {issueKeys.length === 1 ? t("item") : t("items")}  {t("before saving")}</strong><ul>{issueKeys.map((key) => <li key={key}><button type="button" onClick={() => focusIssue(key)}>{errorLabel(key, t)}: {t(currentErrors[key])}</button></li>)}</ul></div> : null}
                 <section role="tabpanel" id="rv-panel-details" aria-labelledby="rv-tab-details" hidden={tab !== "details"}>
-                  {analyzing && !dirty && !item.invoice ? null : issueKeys.length ? <div className="rv-issue-banner"><div className="rv-issue-banner-icon"><CircleAlert size={17} /></div><div><strong>{issueKeys.length} {issueKeys.length === 1 ? t("item needs") : t("items need")}  {t("your attention")}</strong><p>{t("Compare flagged values with the original.")}</p></div><button type="button" onClick={focusNextIssue} aria-label={t("Go to next issue")}><ArrowRight size={17} /></button></div> : <div className="rv-checked-banner"><CheckCheck size={17} /><span>{item.invoice && !dirty ? t("Invoice details saved") : t("All checks complete. Ready to save.")}</span></div>}
+                  {(duplicates && !duplicates.confirmed) || (analyzing && !dirty && !item.invoice) ? null : issueKeys.length ? <div className="rv-issue-banner"><div className="rv-issue-banner-icon"><CircleAlert size={17} /></div><div><strong>{issueKeys.length} {issueKeys.length === 1 ? t("item needs") : t("items need")}  {t("your attention")}</strong><p>{t("Compare flagged values with the original.")}</p></div><button type="button" onClick={focusNextIssue} aria-label={t("Go to next issue")}><ArrowRight size={17} /></button></div> : <div className="rv-checked-banner"><CheckCheck size={17} /><span>{item.invoice && !dirty ? t("Invoice details saved") : t("All checks complete. Ready to save.")}</span></div>}
                   {!completed && !item.invoice && !analyzing ? <div className="rv-processing-note"><p>{mode === "demo" && !item.sample ? t("Enter the invoice details below. Automatic analysis is not available for uploads in the demo.") : runFailed ? t("We couldn’t read the document. Try again or enter the details yourself.") : t("Fill in the details automatically, or enter them yourself.")}</p>{mode === "live" || item.sample ? <button type="button" className="button button-small" onClick={onAnalyze}><RotateCw size={14} />{runFailed ? t("Try again") : t("Read document")}</button> : null}</div> : null}
                   <div className="rv-field-group"><div className="rv-group-heading"><span>{t("INVOICE DETAILS")}</span><span>{t("* Required")}</span></div><div className="rv-fields">{renderField("supplierName", { required: true, wide: true, placeholder: t("Supplier or company name") })}{renderField("invoiceNumber", { required: true, wide: true, placeholder: t("e.g. INV-2026-0137") })}{renderField("invoiceDate", { required: true, type: "date" })}{renderField("dueDate", { type: "date" })}</div></div>
                   <div className="rv-field-group"><div className="rv-group-heading"><span>{t("AMOUNTS")}</span><span>{t("Use a decimal point")}</span></div><div className="rv-fields">{renderField("subtotalAmount", { placeholder: "0.00" })}{renderField("taxAmount", { placeholder: "0.00" })}{renderField("shippingAmount", { placeholder: "0.00" })}{renderField("discountAmount", { placeholder: "0.00" })}{renderField("totalAmount", { required: true, placeholder: "0.00" })}{renderField("currency", { placeholder: t("e.g. EUR") })}</div></div>
@@ -219,7 +242,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
                   <ol className="rv-history"><li><div className="rv-history-dot"><FileText size={14} /></div><div><div className="rv-history-title"><strong>{t("Document uploaded")}</strong><time>{t(historyTime(item.document.uploadedAt, formatLocale))}</time></div><p>{item.document.originalFileName}</p></div></li>{[...runs].sort((first, second) => first.startedAt.localeCompare(second.startedAt)).map((run) => <li key={run.id}><div className={`rv-history-dot ${run.status === "Failed" ? "rv-history-failed" : run.status === "Completed" ? "rv-history-complete" : ""}`}>{run.status === "Completed" ? <Check size={14} /> : run.status === "Failed" ? <CircleAlert size={14} /> : <Clock3 size={14} />}</div><div><div className="rv-history-title"><strong>{run.status === "Completed" ? t("Details ready") : t(analysisLabel(run))}</strong><time>{t(historyTime(run.completedAt || run.startedAt, formatLocale))}</time></div>{run.status === "Failed" ? <p className="rv-history-error">{t(analysisFailureMessage(run))}</p> : null}</div></li>)}{item.invoice ? <li><div className="rv-history-dot rv-history-complete"><Save size={14} /></div><div><div className="rv-history-title"><strong>{t("Invoice saved")}</strong><time>{t(historyTime(item.invoice.updatedAt, formatLocale))}</time></div><p>{t("Invoice")} {item.invoice.invoiceNumber}</p></div></li> : null}</ol>
                 </section>
               </div>
-              <footer className="rv-save-footer"><div className="rv-save-meta"><span>{t("INVOICE TOTAL")}</span><strong>{totalText} <small>{values.currency.toUpperCase()}</small></strong></div><div className="rv-save-actions"><span className={`rv-save-state ${feedback ? "rv-save-success" : ""}`} role="status">{saving ? t("Saving your invoice…") : feedback ? <><Check size={13} />{t(feedback)}</> : dirty ? t("Unsaved changes") : item.invoice ? t("All changes saved") : t("Not saved yet")}</span><button type="submit" className="button button-primary" disabled={saving || (Boolean(item.invoice) && !dirty)}>{saving ? <LoaderCircle size={15} className="rv-spin" /> : <Check size={15} />}{saving ? t("Saving…") : item.invoice ? t("Save changes") : t("Save invoice")}</button></div></footer>
+              <footer className="rv-save-footer"><div className="rv-save-meta"><span>{t("INVOICE TOTAL")}</span><strong>{totalText} <small>{values.currency.toUpperCase()}</small></strong></div><div className="rv-save-actions"><span className={`rv-save-state ${feedback ? "rv-save-success" : ""}`} role="status">{saving ? t("Saving your invoice…") : feedback ? <><Check size={13} />{t(feedback)}</> : dirty ? t("Unsaved changes") : item.invoice ? t("All changes saved") : t("Not saved yet")}</span><button type="submit" className="button button-primary" disabled={saving || Boolean(duplicates && !duplicates.confirmed) || (Boolean(item.invoice) && !dirty)}>{saving ? <LoaderCircle size={15} className="rv-spin" /> : <Check size={15} />}{saving ? t("Saving…") : duplicates?.confirmed ? t("Save anyway") : item.invoice ? t("Save changes") : t("Save invoice")}</button></div></footer>
             </fieldset>
           </form>
         </section>

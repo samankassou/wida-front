@@ -1,6 +1,6 @@
 import type { ProcessingRun, WorkspaceItem } from "./types";
 
-export interface UploadResult { item: WorkspaceItem; analysisError?: string }
+export interface UploadResult { item: WorkspaceItem; analysisError?: string; duplicate?: boolean; originalRestored?: boolean }
 
 export function analysisRequestMessage(status?: number): string {
   if (status === 429) return "Your document is saved. All analyses are busy. Try again shortly, or enter the details manually.";

@@ -6,6 +6,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bell, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, ShieldCheck, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { fileContentHash, findDuplicateInvoices } from "@/lib/duplicate-invoices";
 import * as api from "@/lib/api";
 import { getDemoItems, getDemoRun } from "@/lib/demo-data";
 import { amountOf, currencyOf, dateLabel, money, numberOf, stageLabels, stageOf, supplierOf } from "@/lib/format";
@@ -216,17 +217,24 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
   }
   async function onUpload(file: File, extract: boolean): Promise<UploadResult> {
     let analysisError: string | undefined;
+    let duplicate = false;
+    let originalRestored = false;
     let added: WorkspaceItem;
     if (mode === "demo") {
+      const contentHash = await fileContentHash(file);
+      const existing = itemsRef.current.find(row => row.document.contentHash === contentHash);
+      if (existing) return { item: existing, duplicate: true };
       const id = crypto.randomUUID(); await putDocumentFile(id, file);
       const extension = file.name.toLowerCase().split(".").at(-1);
       const type = file.type || (extension === "pdf" ? "application/pdf" : extension === "png" ? "image/png" : extension === "tif" || extension === "tiff" ? "image/tiff" : "image/jpeg");
-      added = { document: { id, originalFileName: file.name, contentType: type, documentType: "Unknown", status: "Uploaded", uploadedAt: new Date().toISOString() }, invoice: null, latestRun: null };
+      added = { document: { id, contentHash, originalFileName: file.name, contentType: type, documentType: "Unknown", status: "Uploaded", uploadedAt: new Date().toISOString() }, invoice: null, latestRun: null };
     } else {
       const uploaded = await client.uploadDocument(file);
+      duplicate = uploaded.isDuplicate === true;
+      originalRestored = uploaded.originalRestored === true;
       added = (await client.fetchWorkspace()).find(row => row.document.id === uploaded.id)
         ?? { document: uploaded, invoice: null, latestRun: null };
-      if (extract) {
+      if (extract && !duplicate) {
         try { added.latestRun = await client.analyzeDocument(added.document.id); }
         catch (cause) {
           analysisError = cause instanceof api.ApiError && [400, 403, 429].includes(cause.status) ? cause.message : analysisRequestMessage(cause instanceof api.ApiError ? cause.status : undefined);
@@ -237,7 +245,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     }
     persist([added, ...itemsRef.current.filter(row => row.document.id !== added.document.id)]);
     if (analysisError) setAnalysisWarnings(previous => ({ ...previous, [added.document.id]: analysisError }));
-    return { item: added, analysisError };
+    return { item: added, analysisError, duplicate, originalRestored };
   }
   async function signOut() {
     if (!onLogout || !userId || loggingOut) return;
@@ -256,7 +264,20 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     storeDraft(item, updated);
     setSaveError(null); setServerErrors({});
   }
-  async function onSave(updated: ReviewDraft) {
+  async function openDuplicate(documentId: string) {
+    if (itemsRef.current.some(row => row.document.id === documentId)) { openItem(documentId); return; }
+    if (mode !== "live") return;
+    try {
+      const [document, invoice, history] = await Promise.all([
+        client.fetchDocument(documentId), client.fetchDocumentInvoice(documentId), client.fetchRuns(documentId),
+      ]);
+      const latestRun = history.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt))[0] ?? null;
+      persist([{ document, invoice, latestRun }, ...itemsRef.current.filter(row => row.document.id !== documentId)]);
+      openItem(documentId);
+    } catch (cause) { notify(cause instanceof Error ? cause.message : "Unable to open the matching invoice."); }
+  }
+
+  async function onSave(updated: ReviewDraft, allowDuplicate = false) {
     if (!item) return;
     const documentId = item.document.id;
     if (activeSaves.current.has(documentId)) throw new Error("This invoice is already being saved.");
@@ -267,14 +288,18 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     setSaveError(null); setServerErrors({});
     try {
       const payload = toInvoicePayload(updated.values, documentId);
-      const invoice: Invoice = mode === "live" ? await client.saveInvoice(payload, item.invoice?.id) : { ...payload, id: item.invoice?.id ?? crypto.randomUUID(), createdAt: item.invoice?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString() };
+      if (mode === "demo" && !allowDuplicate) {
+        const matches = findDuplicateInvoices(itemsRef.current, updated.values, documentId);
+        if (matches.length) throw new api.DuplicateInvoiceError(matches);
+      }
+      const invoice: Invoice = mode === "live" ? await client.saveInvoice(payload, item.invoice?.id, allowDuplicate) : { ...payload, id: item.invoice?.id ?? crypto.randomUUID(), createdAt: item.invoice?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString() };
       const records = mergeInvoiceResult(itemsRef.current, documentId, invoice);
       if (!persist(records, true)) throw new Error("This browser could not save the invoice. Your draft has been kept. Free some browser storage, then try Save again.");
       discardDraft(documentId);
       notify(currentDocumentId.current === documentId ? item.invoice ? "Invoice changes saved." : "Invoice saved." : `${item.document.originalFileName}: ${t("Invoice saved.")}`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "The invoice could not be saved. Your draft has been kept.";
-      if (currentDocumentId.current === documentId) { if (cause instanceof api.ApiError) setServerErrors(cause.errors); setSaveError(message); }
+      if (currentDocumentId.current === documentId) { if (cause instanceof api.ApiError) setServerErrors(cause.errors); setSaveError(cause instanceof api.DuplicateInvoiceError ? null : message); }
       else notify(`${item.document.originalFileName}: ${t(message)}`);
       throw cause;
     }
@@ -353,7 +378,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       {mode === "live" ? <AnalysisActivity items={items} activeItems={activeItems} recentUpdates={recentUpdates} statusUnavailable={statusUnavailable} onOpen={openItem} onDismiss={() => setAnalysisUpdates([])} /> : null}
       {mode === "live" && Object.keys(analysisWarnings).length ? <section className="processing-activity" aria-label={t("Analysis requests needing attention")}><div className="processing-activity-heading"><strong>{t("Uploads saved · Analysis needs attention")}</strong><button className="button button-small" onClick={refresh} disabled={loading}>{t("Refresh status")}</button></div><ul>{Object.entries(analysisWarnings).map(([id, message]) => <li key={id}><button onClick={() => openItem(id)}><span><CircleAlert size={17} /><strong>{items.find(row => row.document.id === id)?.document.originalFileName}</strong></span><span>{t("Open document")}<ArrowRight size={15} /></span></button><p className="processing-request-warning">{t(message)}</p></li>)}</ul></section> : null}
       {storageWarning ? <div className="error-banner" role="alert"><CircleAlert size={18} /><span>{t("Browser storage is full or unavailable. Keep this tab open and save your invoice before leaving.")}</span></div> : null}
-      {view === "review" ? item && draft ? <InvoiceReview key={item.document.id} item={item} draft={draft} onDraftChange={changeDraft} onSave={onSave} onBack={() => navigate("documents")} onNext={() => { if (nextReview) openItem(nextReview.document.id); }} hasNext={Boolean(nextReview)} saving={saving} mode={mode} sourceUrl={sourceUrl} runs={mode === "demo" ? item.latestRun ? [item.latestRun] : [] : runs} onAnalyze={analyze} analyzing={analyzing} serverErrors={serverErrors} error={saveError || (selectedId ? analysisWarnings[selectedId] : null)} /> : loading ? <div className="review-loading"><LoaderCircle className="spin" />{t("Loading document…")}</div> : <div className="empty-state"><FolderOpen /><h2>{t("We couldn’t find this document")}</h2><p>{loadError ? t(loadError) : t("The link may be outdated, or the document belongs to another workspace.")}</p><button className="button" onClick={() => navigate("documents")}><ArrowLeft size={16} />{t("Back to documents")}</button></div> : <>
+      {view === "review" ? item && draft ? <InvoiceReview key={item.document.id} item={item} draft={draft} onDraftChange={changeDraft} onSave={onSave} onOpenDuplicate={openDuplicate} onBack={() => navigate("documents")} onNext={() => { if (nextReview) openItem(nextReview.document.id); }} hasNext={Boolean(nextReview)} saving={saving} mode={mode} sourceUrl={sourceUrl} runs={mode === "demo" ? item.latestRun ? [item.latestRun] : [] : runs} onAnalyze={analyze} analyzing={analyzing} serverErrors={serverErrors} error={saveError || (selectedId ? analysisWarnings[selectedId] : null)} /> : loading ? <div className="review-loading"><LoaderCircle className="spin" />{t("Loading document…")}</div> : <div className="empty-state"><FolderOpen /><h2>{t("We couldn’t find this document")}</h2><p>{loadError ? t(loadError) : t("The link may be outdated, or the document belongs to another workspace.")}</p><button className="button" onClick={() => navigate("documents")}><ArrowLeft size={16} />{t("Back to documents")}</button></div> : <>
       <section className="page-heading"><div><h1>{view === "invoices" ? t("Invoices") : t("Documents")}</h1></div><div className="page-actions">{view === "invoices" ? <button className="button" onClick={exportInvoices} disabled={!counts.saved}><Download size={16} />{t("Export CSV")}</button> : null}<button className="button button-primary" onClick={() => setUploadOpen(true)}><Plus size={18} />{t("Upload documents")}</button></div></section>
 
       {view === "documents" ? <section className="summary-grid" aria-label={t("Workspace overview")}>

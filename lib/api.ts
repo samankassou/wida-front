@@ -1,4 +1,4 @@
-import type { AuthSession, DocumentRecord, FieldErrors, Invoice, ProcessingRun, WorkspaceItem } from "./types";
+import type { AuthSession, DocumentRecord, DuplicateInvoice, FieldErrors, Invoice, ProcessingRun, WorkspaceItem } from "./types";
 
 export interface ApiSession {
   csrfToken: string;
@@ -10,6 +10,14 @@ export class ApiError extends Error {
   status: number;
   errors: FieldErrors;
   constructor(message: string, status: number, errors: FieldErrors = {}) { super(message); this.status = status; this.errors = errors; }
+}
+
+export class DuplicateInvoiceError extends ApiError {
+  matches: DuplicateInvoice[];
+  constructor(matches: DuplicateInvoice[]) {
+    super("A saved invoice has the same supplier and invoice number. Review it before saving.", 409);
+    this.matches = matches;
+  }
 }
 
 export function normalizeFieldErrors(input: unknown): FieldErrors {
@@ -37,6 +45,9 @@ async function request<T>(path: string, init?: RequestInit, session?: ApiSession
   }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    if (response.status === 409 && body?.code === "DUPLICATE_INVOICE" && Array.isArray(body.matches) && body.matches.length) {
+      throw new DuplicateInvoiceError(body.matches);
+    }
     const errors = normalizeFieldErrors(body?.errors);
     const message = response.status >= 500
       ? "The service is temporarily unavailable. Please try again later."
@@ -65,14 +76,16 @@ export function createApiClient(session?: ApiSession) {
     verifyChallenge: (token: string) => request("trial/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, session),
     requestCredits: () => request<{ requested: boolean }>("trial/credits", { method: "POST" }, session),
     fetchWorkspace: () => request<WorkspaceItem[]>("documents/workspace?limit=500", undefined, session),
+    fetchDocument: (id: string) => request<DocumentRecord>(`documents/${encodeURIComponent(id)}`, undefined, session),
+    fetchDocumentInvoice: (id: string) => request<Invoice>(`invoices/document/${encodeURIComponent(id)}`, undefined, session),
     fetchRun: (id: string) => request<ProcessingRun>(`processing/${encodeURIComponent(id)}`, undefined, session),
     fetchRuns: (id: string) => request<ProcessingRun[]>(`processing/documents/${encodeURIComponent(id)}`, undefined, session),
     analyzeDocument: (id: string, reanalyze = false) => request<ProcessingRun>(`processing/documents/${encodeURIComponent(id)}/invoice${reanalyze ? "?reanalyze=true" : ""}`, { method: "POST" }, session),
     uploadDocument: (file: File) => {
       const body = new FormData(); body.set("file", file);
-      return request<DocumentRecord>("documents", { method: "POST", body }, session);
+      return request<DocumentRecord & { isDuplicate?: boolean; originalRestored?: boolean }>("documents", { method: "POST", body }, session);
     },
-    saveInvoice: (body: Omit<Invoice, "id" | "createdAt" | "updatedAt">, id?: string) => request<Invoice>(id ? `invoices/${encodeURIComponent(id)}` : "invoices", { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, session),
+    saveInvoice: (body: Omit<Invoice, "id" | "createdAt" | "updatedAt">, id?: string, allowDuplicate = false) => request<Invoice>(id ? `invoices/${encodeURIComponent(id)}` : "invoices", { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, allowDuplicate }) }, session),
   };
 }
 

@@ -12,7 +12,7 @@ Wida is an open-source document inbox and invoice review workspace built with Ne
 - Document inbox with search, status tabs, actionable counts, supplier/date sorting, currency and upload-date filters, selection, and client-side pagination.
 - Multiple-file upload with drag-and-drop or a file picker: up to 20 PDF, PNG, JPEG, or TIFF files at a time, each up to 4 MiB and at most two pages.
 - Invoice review with original-document preview, confidence indicators, explicit checks for uncertain fields, extracted and editable line items, inline validation, and processing history.
-- Invoice creation and editing, draft recovery, review-next navigation, and CSV export of saved invoice headers.
+- Invoice creation and editing, draft recovery, review-next navigation, and CSV export of saved invoice headers. Saving checks for matching supplier + invoice number and offers an explicit override after review. Identical uploads reopen the existing document without automatically requesting analysis.
 - Responsive navigation and review panels, light/dark preferences, and keyboard shortcuts: `/` to search, `U` to upload, and `?` for help.
 
 ![Wida application reviewing the fictional Atelier North invoice beside its source.](docs/images/workspace-review.png)
@@ -163,3 +163,9 @@ The workspace displays the authenticated profile. Administrators see “Sans quo
 ## Visual design
 
 `app/design-tokens.css` defines the shared palette, typography, corner radii, and shadows for the landing page, sign-in, workspace, invoice review, and administration. Change these tokens to evolve the visual identity consistently. Dark mode overrides the same semantic colors; warning, error, and success states keep distinct colors.
+
+## Duplicate detection
+
+Live uploads reuse identical files within the signed-in account using SHA-256. The upload dialog distinguishes an existing document from a restored original and links to it; neither automatically starts analysis. New demo uploads also store a content hash locally. Older demo uploads without a hash are not retrospectively checked, and the demo cannot identify duplicates of its fictional sample originals.
+
+Saving or updating an invoice checks other saved invoices for the same supplier and invoice number, ignoring case and repeated/leading/trailing whitespace while preserving punctuation. Live checks cover the account’s saved invoices beyond the workspace’s 500-document window; the demo checks its local records. Up to ten matches show dates, totals, and an open action. The draft is retained. Acknowledging the match enables **Save anyway**; changing invoice values clears that acknowledgement. Different scans of unsaved documents are not matched until there is a saved invoice. This is an advisory safeguard, not a uniqueness constraint: simultaneous saves may not see each other.
