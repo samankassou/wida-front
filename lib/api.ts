@@ -75,7 +75,8 @@ export function createApiClient(session?: ApiSession) {
     fetchTrial: () => request<TrialBalance>("trial", undefined, session),
     verifyChallenge: (token: string) => request("trial/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, session),
     requestCredits: () => request<{ requested: boolean }>("trial/credits", { method: "POST" }, session),
-    fetchWorkspace: () => request<WorkspaceItem[]>("documents/workspace?limit=500", undefined, session),
+    fetchWorkspace: (query: Partial<WorkspaceQuery> = {}, signal?: AbortSignal) => request<WorkspacePage>(`documents/workspace/page?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))}`, { signal }, session ? { ...session, signal: signal && session.signal ? AbortSignal.any([signal, session.signal]) : signal ?? session.signal } : undefined),
+    fetchWorkspaceItem: (id: string) => request<WorkspaceItem>(`documents/workspace/${encodeURIComponent(id)}`, undefined, session),
     fetchDocument: (id: string) => request<DocumentRecord>(`documents/${encodeURIComponent(id)}`, undefined, session),
     fetchDocumentInvoice: (id: string) => request<Invoice>(`invoices/document/${encodeURIComponent(id)}`, undefined, session),
     fetchRun: (id: string) => request<ProcessingRun>(`processing/${encodeURIComponent(id)}`, undefined, session),
@@ -101,3 +102,13 @@ export interface AdminUser {
   pagesGranted: number; pagesUsed: number; creditRequestedAt: string | null;
 }
 export interface AdminUserPage { users: AdminUser[]; total: number; page: number; pageSize: number }
+
+export interface WorkspaceQuery { page: number; pageSize: number; search: string; filter: string; view: "documents" | "invoices"; currency: string; period: string; sort: string }
+export interface WorkspaceSummary {
+  total: number;
+  counts: Record<"saved" | "review" | "processing" | "failed" | "uploaded", number>;
+  active: number;
+  currencies: string[];
+  months: { year: number; month: number; uploaded: number; saved: number }[];
+}
+export interface WorkspacePage { items: WorkspaceItem[]; total: number; page: number; pageSize: number; summary: WorkspaceSummary }
