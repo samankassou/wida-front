@@ -81,7 +81,8 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   const { t, formatLocale } = useLanguage();
   const [tab, setTab] = useState<Tab>("details");
   const [mobilePanel, setMobilePanel] = useState<"document" | "fields">("fields");
-  const [activeField, setActiveField] = useState<HeaderField | null>("invoiceNumber");
+  const [activeField, setActiveField] = useState<string>("invoiceNumber");
+  const [sourceSelection, setSourceSelection] = useState(0);
   const [touched, setTouched] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -91,10 +92,19 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   const values = draft.values;
   const baseline = createDraft(item);
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline.values);
+  const activeLine = /^lines\.(\d+)\.(\w+)$/.exec(activeField);
+  const activeSource = activeLine
+    ? values.lines[Number(activeLine[1])] ? getExtractedLineField(item, values.lines[Number(activeLine[1])], activeLine[2] as Exclude<keyof InvoiceLineDraft, "id">) : undefined
+    : getExtractedField(item, activeField as HeaderField);
   const completed = item.latestRun?.status === "Completed";
   const runFailed = item.latestRun?.status === "Failed";
   const total = numericValue(values.totalAmount);
   const totalText = total === null ? "—" : new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total);
+
+  function selectField(key: string) {
+    setActiveField(key);
+    setSourceSelection(value => value + 1);
+  }
 
   function changeField(name: HeaderField, value: string) {
     setFeedback("");
@@ -108,7 +118,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   function focusIssue(key: string) {
     setMobilePanel("fields");
     setTab(key.startsWith("lines.") ? "lines" : "details");
-    if (!key.startsWith("lines.")) setActiveField(key as HeaderField);
+    setActiveField(key);
     requestAnimationFrame(() => {
       const element = root.current?.querySelector<HTMLElement>(`[id="rv-field-${key}"]`);
       let ancestor = element?.parentElement;
@@ -158,7 +168,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
     const text = key === "description" || key === "unitOfMeasure";
     return <div className={`rv-field ${wide ? "rv-field-wide" : ""} ${needsCheck && !checked ? "rv-field-review" : ""}`} key={key}>
       <div className="rv-field-label"><label htmlFor={`rv-field-${fieldKey}`}>{label}</label>{needsCheck ? <span className={`rv-confidence ${checked ? "" : "rv-confidence-low"}`}>{checked ? t("Checked") : t("Check value")}</span> : null}</div>
-      <input id={`rv-field-${fieldKey}`} inputMode={text ? "text" : "decimal"} value={line[key]} onChange={(event) => changeLine(index, key, event.target.value)} aria-invalid={Boolean(error)} aria-describedby={[needsCheck ? `rv-check-${fieldKey}` : "", error ? `rv-error-${fieldKey}` : ""].filter(Boolean).join(" ") || undefined} />
+      <input id={`rv-field-${fieldKey}`} inputMode={text ? "text" : "decimal"} onFocus={() => selectField(fieldKey)} value={line[key]} onChange={(event) => changeLine(index, key, event.target.value)} aria-invalid={Boolean(error)} aria-describedby={[needsCheck ? `rv-check-${fieldKey}` : "", error ? `rv-error-${fieldKey}` : ""].filter(Boolean).join(" ") || undefined} />
       {needsCheck ? <label className={`rv-field-check ${checked ? "rv-field-checked" : ""}`} id={`rv-check-${fieldKey}`}><input type="checkbox" checked={checked} onChange={(event) => checkField(checkKey, event.target.checked)} /><span>{checked ? t("Checked against the original") : t("I checked this value against the original")}</span></label> : null}
       {key === "lineAmount" && taxInclusiveLineNet(line) !== null ? <p className="rv-confidence-note">{t("Includes tax · Amount before tax:")} {taxInclusiveLineNet(line)!.toFixed(2)}.</p> : null}
       {error ? <p className="field-error" id={`rv-error-${fieldKey}`}>{t(error ?? "")}</p> : null}
@@ -166,7 +176,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
   }
 
   function renderField(name: HeaderField, options: Partial<Pick<FieldProps, "wide" | "required" | "placeholder" | "type">> = {}) {
-    return <InvoiceField key={name} name={name} value={values[name]} extracted={getExtractedField(item, name)} checked={draft.checkedFields.includes(name)} error={currentErrors[name]} showError={submitted || touched.includes(name) || Boolean(serverErrors[name])} onChange={changeField} onCheck={checkField} onFocus={setActiveField} onBlur={(field) => setTouched((previous) => previous.includes(field) ? previous : [...previous, field])} {...options} />;
+    return <InvoiceField key={name} name={name} value={values[name]} extracted={getExtractedField(item, name)} checked={draft.checkedFields.includes(name)} error={currentErrors[name]} showError={submitted || touched.includes(name) || Boolean(serverErrors[name])} onChange={changeField} onCheck={checkField} onFocus={selectField} onBlur={(field) => setTouched((previous) => previous.includes(field) ? previous : [...previous, field])} {...options} />;
   }
 
   return (
@@ -177,7 +187,7 @@ export default function InvoiceReview({ item, draft, onDraftChange, onSave, onBa
       <div className="rv-mobile-tabs" aria-label={t("Review panels")}><button type="button" aria-pressed={mobilePanel === "document"} onClick={() => setMobilePanel("document")}><FileText size={15} />{t("Original document")}</button><button type="button" aria-pressed={mobilePanel === "fields"} onClick={() => setMobilePanel("fields")}><Layers3 size={15} />{t("Invoice details")}{issueKeys.length ? <span>{issueKeys.length}</span> : null}</button></div>
 
       <div className={`rv-split rv-mobile-${mobilePanel}`}>
-        <div className="rv-original-panel"><DocumentPreview key={item.document.id} item={item} sourceUrl={sourceUrl} activeField={activeField} onFieldSelect={focusIssue} /></div>
+        <div className="rv-original-panel"><DocumentPreview key={item.document.id} item={item} sourceUrl={sourceUrl} activeField={activeLine ? null : activeField as HeaderField} extracted={activeSource} sourceLabel={errorLabel(activeField, t)} selectionKey={`${activeField}:${activeSource?.id ?? ""}:${sourceSelection}:${mobilePanel}`} onFieldSelect={focusIssue} /></div>
         <section className="rv-data-panel" aria-label={t("Invoice review form")}>
           <div className="rv-data-panel-header"><div><h2>{t("Invoice details")}</h2><p>{item.invoice ? t("Saved record · edit to make a correction") : t("Check the details before saving")}</p></div><span className="rv-extraction-icon"><ShieldCheck size={20} aria-hidden="true" /></span></div>
           <ProcessingProgress run={item.latestRun} submitting={analyzing} />

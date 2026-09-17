@@ -18,6 +18,12 @@ The Node test runner exercises extraction-to-form mapping, confidence checks, mi
 
 The default build uses Turbopack. If a restricted host rejects its child-process port binding, use `pnpm exec next build --webpack` as a build fallback. Use the default build when supported; the fallback is for that host restriction, not a general requirement.
 
+## Source highlighting
+
+The PDF.js worker, character maps, fonts, and WASM assets are copied from the installed package to ignored `public/pdfjs/` assets by `pnpm dev` and `pnpm build`. Deploy those generated public assets with the application; the worker version must match the package. No CDN or external document viewer receives originals.
+
+Verify a two-page PDF and a PNG/JPEG with new extraction geometry: focus header fields on different pages, then extracted line items; confirm highlights align after zoom and each 90-degree rotation. Manually navigate pages, switch fields again, resize, and switch mobile panels. Missing/legacy geometry must show a no-location message, never a guessed box. A PDF loading/rendering failure must leave the open-original link usable. Confirm existing sample previews, editing, and saving still work. Saved line rows deliberately have no inferred source mapping.
+
 ## Manual browser checklist
 
 Use a fresh browser profile or an expendable demo workspace for repeatable checks. Demo changes persist across reloads.

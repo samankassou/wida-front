@@ -1,15 +1,25 @@
 "use client";
 import { useLanguage } from "./language-provider";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import TransformedSource from "./transformed-source";
+import HighlightOverlay from "./source-highlight";
+import { sourceHighlight } from "@/lib/source-highlight";
+
 import { ExternalLink, FileText, RotateCw, ScanLine, ZoomIn, ZoomOut } from "lucide-react";
-import type { WorkspaceItem } from "@/lib/types";
+import type { ExtractedField, WorkspaceItem } from "@/lib/types";
 import { fieldLabels, type HeaderField } from "@/lib/invoice-form";
+
+const PdfSource = dynamic(() => import("./pdf-source"), { ssr: false });
 
 interface Props {
   item: WorkspaceItem;
   sourceUrl: string | null;
   activeField: HeaderField | null;
+  extracted?: ExtractedField;
+  sourceLabel: string;
+  selectionKey: string;
   onFieldSelect: (field: HeaderField) => void;
 }
 
@@ -24,41 +34,18 @@ function displayDate(value: string, locale: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function TransformedSource({ zoom, rotation, children }: { zoom: number; rotation: number; children: React.ReactNode }) {
-  const container = useRef<HTMLDivElement>(null);
-  const source = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    if (!container.current || !source.current) return;
-    const measure = () => {
-      const width = container.current?.clientWidth ?? 0;
-      const height = source.current?.offsetHeight ?? 0;
-      setDimensions((previous) => previous.width === width && previous.height === height ? previous : { width, height });
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(container.current);
-    observer.observe(source.current);
-    measure();
-    return () => observer.disconnect();
-  }, []);
-  const { width, height } = dimensions;
-  const scale = zoom / 100;
-  const quarterTurn = rotation === 90 || rotation === 270;
-  const translateX = rotation === 90 ? height : rotation === 180 ? width : 0;
-  const translateY = rotation === 180 ? height : rotation === 270 ? width : 0;
-  const measured = width > 0 && height > 0;
-  return <div className="rv-transform-container" ref={container}><div className="rv-transform-stage" style={measured ? { width: (quarterTurn ? height : width) * scale, height: (quarterTurn ? width : height) * scale } : undefined}><div className="rv-transform-source" ref={source} style={measured ? { width, position: "absolute", transform: `translate(${translateX * scale}px, ${translateY * scale}px) rotate(${rotation}deg) scale(${scale})` } : undefined}>{children}</div></div></div>;
-}
-
-export default function DocumentPreview({ item, sourceUrl, activeField, onFieldSelect }: Props) {
+export default function DocumentPreview({ item, sourceUrl, activeField, onFieldSelect, extracted, sourceLabel, selectionKey }: Props) {
   const { t, formatLocale } = useLanguage();
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
+  const region = useMemo(() => sourceHighlight(extracted), [extracted]);
+  const highlightLabel = t("Source of {field}", { field: sourceLabel });
   const sample = item.sample;
   const isImage = item.document.contentType.startsWith("image/");
   const isPdf = item.document.contentType === "application/pdf";
-  const canTransform = Boolean(sample || (isImage && sourceUrl && !imageFailed));
+  const canTransform = Boolean(sample || (sourceUrl && (isPdf || (isImage && !imageFailed))));
   const sourceButton = (field: HeaderField, content: React.ReactNode, className = "") => (
     <button type="button" className={`rv-source-value ${activeField === field ? "rv-source-active" : ""} ${className}`} onClick={() => onFieldSelect(field)} aria-label={t("Check {field}: {value}", { field: t(fieldLabels[field]), value: String(content) })}>
       {content}
@@ -80,7 +67,7 @@ export default function DocumentPreview({ item, sourceUrl, activeField, onFieldS
           {sourceUrl ? <a className="icon-button" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={t("Open original document in a new tab")}><ExternalLink size={16} /></a> : null}
         </div>
       </div>
-      <div className={`rv-document-viewport ${isPdf && !sample ? "rv-pdf-viewport" : ""}`}>
+      <div className="rv-document-viewport">
         {sample ? (
           <TransformedSource zoom={zoom} rotation={rotation}>
             <article className="rv-paper" aria-label={t("Fictional sample invoice")}>
@@ -97,16 +84,19 @@ export default function DocumentPreview({ item, sourceUrl, activeField, onFieldS
             </article>
           </TransformedSource>
         ) : sourceUrl && isImage && !imageFailed ? (
-          // Blob URLs and original document dimensions are deliberately preserved.
-          // eslint-disable-next-line @next/next/no-img-element
-          <TransformedSource zoom={zoom} rotation={rotation}><img className="rv-original-image" src={sourceUrl} alt={t("Original document: {name}", { name: item.document.originalFileName })} onError={() => setImageFailed(true)} /></TransformedSource>
+          <TransformedSource zoom={zoom} rotation={rotation}><div className="rv-source-page">
+            {/* Blob URLs and original document dimensions are deliberately preserved. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="rv-original-image" src={sourceUrl} alt={t("Original document: {name}", { name: item.document.originalFileName })} onLoad={() => setImageReady(true)} onError={() => setImageFailed(true)} />
+            <HighlightOverlay region={imageReady && region?.pageNumber === 1 ? region : null} label={highlightLabel} selectionKey={`${selectionKey}:${zoom}:${rotation}`} />
+          </div></TransformedSource>
         ) : sourceUrl && isPdf ? (
-          <iframe className="rv-pdf" src={`${sourceUrl}#toolbar=1&view=FitH`} title={t("Original PDF: {name}", { name: item.document.originalFileName })} />
+          <PdfSource key={sourceUrl} url={sourceUrl} region={region} selectionKey={selectionKey} label={highlightLabel} zoom={zoom} rotation={rotation} />
         ) : (
           <div className="rv-preview-empty"><div className="rv-preview-empty-icon"><ScanLine size={28} /></div><h3>{imageFailed ? t("This image cannot be previewed") : t("Original document")}</h3><p>{sourceUrl ? t("Open the original file to compare it with the invoice fields.") : t("The original preview will appear here when it is available.")}</p>{sourceUrl ? <a className="button" href={sourceUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} />{t("Open original")}</a> : null}</div>
         )}
       </div>
-      <div className="rv-preview-footnote"><span>{sample ? t("Sample source · select a value to review it") : isPdf && sourceUrl ? t("Use the PDF toolbar to navigate the document.") : t("Compare the original with the fields on the right.")}</span>{sourceUrl && isPdf ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{t("Open original")} <ExternalLink size={12} /></a> : <span>{sample ? "1 / 1" : item.document.contentType.split("/")[1]?.toUpperCase()}</span>}</div>
+      <div className="rv-preview-footnote"><span>{sample ? t("Sample source · select a value to review it") : region && (isPdf || (isImage && region.pageNumber === 1 && !imageFailed)) ? highlightLabel : t("No source location for this field. Compare with the original.")}</span>{sourceUrl && isPdf ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{t("Open original")} <ExternalLink size={12} /></a> : <span>{sample ? "1 / 1" : item.document.contentType.split("/")[1]?.toUpperCase()}</span>}</div>
     </section>
   );
 }

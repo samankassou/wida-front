@@ -1,5 +1,10 @@
 // English message keys with French translations. Keep interpolation names identical.
 export const messages: Record<string, { en: string; fr: string }> = {
+  "Original PDF page {page}": {"en": "Original PDF page {page}", "fr": "Page {page} du PDF original"},
+  "Page {page} of {count}": {"en": "Page {page} of {count}", "fr": "Page {page} sur {count}"},
+  "Highlight preview unavailable. Open the original to review this document.": {"en": "Highlight preview unavailable. Open the original to review this document.", "fr": "Aperçu avec surlignage indisponible. Ouvrez l’original pour vérifier ce document."},
+  "No source location for this field. Compare with the original.": {"en": "No source location for this field. Compare with the original.", "fr": "Aucun emplacement source pour ce champ. Comparez avec l’original."},
+  "Source of {field}": {"en": "Source of {field}", "fr": "Source de {field}"},
   "Manage trial allowances and monitor application usage.": {"en": "Manage trial allowances and monitor application usage.", "fr": "Gérez les limites d’essai et suivez l’utilisation de l’application."},
   "Global usage": {"en": "Global usage", "fr": "Utilisation globale"},
   "Users": {"en": "Users", "fr": "Utilisateurs"},
