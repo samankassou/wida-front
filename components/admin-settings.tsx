@@ -30,16 +30,16 @@ export default function AdminSettings({ session }: { session?: ApiSession }) {
     return () => { active = false; clearTimeout(timer); };
   }, [client, search, page, revision]);
   return <section className="admin-settings" aria-label={t("Administrator settings")}>
-    <div className="admin-toolbar"><p>{t("Manage trial allowances and monitor application usage.")}</p><button className="button button-small" disabled={loading} onClick={() => { setLoading(true); setRevision(x => x + 1); }}><RefreshCw size={15} />{t("Refresh status")}</button></div>
+    <div className="admin-toolbar"><h2>{t("Global usage")}</h2><button className="button button-small" disabled={loading} onClick={() => { setLoading(true); setRevision(x => x + 1); }}><RefreshCw size={15} />{t("Refresh status")}</button></div>
     {notice ? <p role="status">{t(notice)}</p> : null}
     {error ? <p className="error-banner" role="alert">{t(error)}</p> : null}
-    {metrics ? <><h3>{t("Global usage")}</h3><dl className="admin-metrics">{([
+    {metrics ? <><dl className="admin-metrics">{([
       ["Users", metrics.users], ["Documents", metrics.documents], ["Invoices", metrics.invoices],
       ["Completed analyses", metrics.analysesCompleted], ["Failed analyses", metrics.analysesFailed],
       ["Active analyses", metrics.analysesActive], ["Credit requests", metrics.creditRequests],
     ] as const).map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>
     <p className="admin-budget">{t("Monthly analysis budget")} · {metrics.month} (UTC) : <strong>{metrics.monthlyPagesUsed} / {metrics.monthlyPagesLimit}</strong> {t("pages")}</p></> : null}
-    <h3>{t("Users and trial limits")}</h3>
+    <h2 className="admin-users-title">{t("Users and trial limits")}</h2>
     <p>{t("The allowance is a lifetime total. Lowering it below usage leaves zero pages remaining. Administrators are unlimited.")}</p>
     <label className="admin-search">{t("Search users")}<input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(1); setLoading(true); }} placeholder={t("Name or email")} /></label>
     {loading ? <p role="status"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</p> : result ? <>
