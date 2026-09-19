@@ -16,6 +16,8 @@ For a security-sensitive report, use GitHub's **Report a vulnerability** option 
 
 ## Submit a pull request
 
+For versioned releases, follow the [release process](docs/releases.md) and include the version and [changelog](CHANGELOG.md) entry in the same PR as the changes.
+
 For a substantial feature or breaking change, explain the proposed scope in an issue first so maintainers can discuss it. Keep a pull request focused and describe the problem, resulting behavior, and validation performed. Include screenshots for visible interface changes and document any migration or configuration changes.
 
 Use existing project conventions. Update affected documentation and meaningful tests when behavior changes. Do not include generated build output, uploaded originals, credentials, or unrelated formatting changes. Use fictional fixtures and retain license notices.

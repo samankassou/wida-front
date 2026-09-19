@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, nextReviewItem } from "../lib/workspace-state.ts";
+import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, mergeWorkspaceItem, nextReviewItem } from "../lib/workspace-state.ts";
 
 const item = (id) => ({
   document: { id, originalFileName: `${id}.pdf`, contentType: "application/pdf", documentType: "Invoice", status: "Uploaded", uploadedAt: "2026-09-01T12:00:00Z" },
@@ -74,6 +74,31 @@ test("next review advances A to B to C and wraps to A", () => {
   assert.equal(nextReviewItem(items, items, "A")?.document.id, "B");
   assert.equal(nextReviewItem(items, items, "B")?.document.id, "C");
   assert.equal(nextReviewItem(items, items, "C")?.document.id, "A");
+});
+
+test("loading live details preserves review order and updates the existing record", () => {
+  const items = [item("A"), item("B"), item("C")];
+  const before = structuredClone(items);
+  const detail = { ...items[1], document: { ...items[1].document, originalFileName: "updated.pdf" }, latestRun: run("B") };
+  const result = mergeWorkspaceItem(items, detail);
+
+  assert.deepEqual(items, before);
+  assert.deepEqual(result.map(row => row.document.id), ["A", "B", "C"]);
+  assert.strictEqual(result[1], detail);
+  assert.strictEqual(result[0], items[0]);
+  assert.equal(nextReviewItem(result, result, "B")?.document.id, "C");
+  const saved = mergeInvoiceResult(result, "B", invoice("B"));
+  assert.equal(nextReviewItem(saved, saved.filter(row => !row.invoice), "B")?.document.id, "C");
+});
+
+test("direct detail links append uncached documents without duplicating them", () => {
+  const items = [item("A"), item("B")];
+  const detail = item("C");
+  const result = mergeWorkspaceItem(items, detail);
+  assert.deepEqual(result.map(row => row.document.id), ["A", "B", "C"]);
+  assert.deepEqual(mergeWorkspaceItem(result, detail), result);
+  assert.deepEqual(mergeWorkspaceItem([], detail), [detail]);
+  assert.equal(items.length, 2);
 });
 
 test("next review retains the current document position after it leaves the queue", () => {

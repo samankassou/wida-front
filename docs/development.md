@@ -115,6 +115,8 @@ Workspace/login texts live in `lib/translations.ts`; landing copy lives in `comp
 
 Upload the same file under two names: there should be one document, a clear duplicate message, and an **Open existing document** action. In live mode, verify the duplicate does not submit another analysis or debit credits. Same-name, same-size files with different bytes must remain separate uploads. Restore an expired/missing original and confirm its invoice and processing history remain intact.
 
+While reviewing an uploaded original, upload that same file again and choose **Open existing document**. The current preview and live processing history must remain visible without a reload. Then open a different document and verify its own preview/history replace them.
+
 Save a second document with an existing invoice’s supplier and number (including case/whitespace variants). Verify the warning, matching-record navigation, preserved draft, explicit override, and acknowledgement reset after edits. Editing an invoice without changing its identity must not match itself. Same numbers from other suppliers or other accounts must not warn or disclose matches. Check a live match outside the most recent 500 documents and verify its open action.
 
 ## Server-side workspace lists
@@ -122,3 +124,5 @@ Save a second document with an existing invoice’s supplier and number (includi
 Live document and invoice lists send search, status, currency, upload period, sort, page and page size to `documents/workspace/page`. The browser renders the returned page and total; only the offline demo filters locally. Search waits 250 ms after typing, superseded requests are cancelled, and all criteria changes reset to page 1. Summary counters, currency options and charts use server aggregates rather than page rows. Detail links fetch their document independently. CSV export fetches every matching invoice page, including selected records on other pages.
 
 Verify with more than one page: search for an older document, change each filter and sort, navigate forward/back, open a direct document link, complete an analysis while filtering, and export invoices across pages. The API and frontend changes must be deployed together. API tests cover owner isolation, validation, latest extraction, >500 records and PostgreSQL query translation; frontend tests cover query transport, cancellation and proxy routing.
+
+The Documents navigation badge must match the total-document overview before and after visiting additional pages. With three reviewable documents A, B, C loaded in that order, open B and wait for its live details: **Next document** must still open C. Export a credit invoice with negative amounts and confirm the CSV retains numeric negative values, while supplier/number text beginning with formula characters remains escaped.

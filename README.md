@@ -1,5 +1,7 @@
 # Wida Frontend
 
+[Changelog](CHANGELOG.md) · [Release process](docs/releases.md)
+
 Wida is an open-source document inbox and invoice review workspace built with Next.js, React, and TypeScript. Upload originals, compare extracted invoice details with their source, correct uncertain fields, and keep saved invoices together.
 
 ![Wida application document inbox with eight fictional demo documents.](docs/images/workspace-inbox.png)
