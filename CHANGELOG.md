@@ -2,6 +2,19 @@
 
 This file records user-visible changes to the Wida frontend. The API is released independently.
 
+## [0.2.0](https://github.com/samankassou/wida-front/compare/v0.1.1...v0.2.0) (2026-09-19)
+
+
+### Added
+
+* **release:** automate changelog preparation with Release Please ([1ca6624](https://github.com/samankassou/wida-front/commit/1ca6624d561cb3589739c53296909944c86e8717))
+* **release:** automate changelog preparation with Release Please ([cf810b3](https://github.com/samankassou/wida-front/commit/cf810b313db9f9368c37ff46209ece6648769a13))
+
+
+### Fixed
+
+* release frontend v0.1.1 with review and export corrections ([18a38a5](https://github.com/samankassou/wida-front/commit/18a38a5e1214304a48e542cf004fd5331e1cbce0))
+
 ## [Unreleased]
 
 ### Maintenance
