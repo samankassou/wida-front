@@ -7,12 +7,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bell, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, FileCheck2, FileText, FolderOpen, HelpCircle, Inbox, LoaderCircle, LogOut, Menu, Plus, ReceiptText, RefreshCw, ScanLine, Search, ShieldCheck, Settings2, SlidersHorizontal, X } from "lucide-react";
 import { fileContentHash, findDuplicateInvoices } from "@/lib/duplicate-invoices";
+import { csvValue } from "@/lib/csv";
 import * as api from "@/lib/api";
 import { getDemoItems, getDemoRun } from "@/lib/demo-data";
 import { amountOf, currencyOf, dateLabel, money, numberOf, stageLabels, stageOf, supplierOf } from "@/lib/format";
 import { resolveDraft, toInvoicePayload, validateDraft } from "@/lib/invoice-form";
 import { getDocumentFile, hasLiveDrafts, loadWorkspace, putDocumentFile, saveWorkspace } from "@/lib/storage";
-import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, nextReviewItem } from "@/lib/workspace-state";
+import { isAnalysisActive, mergeAnalysisResult, mergeInvoiceResult, mergePolledAnalysis, mergeWorkspaceItem, nextReviewItem } from "@/lib/workspace-state";
 import type { DocumentStage, FieldErrors, Invoice, ProcessingRun, ReviewDraft, SessionUser, WorkspaceItem, WorkspaceMode } from "@/lib/types";
 import TrialBanner from "./trial-banner";
 import WorkspaceAnalytics from "./workspace-analytics";
@@ -33,7 +34,6 @@ function StatusBadge({ stage, queued = false }: { stage: DocumentStage; queued?:
   const Icon = stage === "saved" ? CheckCircle2 : stage === "review" ? CircleAlert : stage === "processing" ? queued ? Clock3 : LoaderCircle : stage === "failed" ? CircleAlert : Clock3;
   return <span className={`badge badge-${stage}`}><Icon size={13} className={stage === "processing" && !queued ? "spin" : ""} />{queued && stage === "processing" ? t("Waiting to start") : t(stageLabels[stage])}</span>;
 }
-function csvValue(value: unknown) { const text = String(value ?? ""); return `"${(/^[\s]*[=+@-]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`; }
 
 export default function Workspace({ mode, user, apiSession, onLogout }: { mode: WorkspaceMode; user?: SessionUser; apiSession?: api.ApiSession; onLogout?: () => Promise<void> }) {
   const { t, formatLocale } = useLanguage();
@@ -201,7 +201,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
           if (history.status === "fulfilled") setRuns(history.value);
           else notify("Processing history couldn't be loaded. You can still review this document.");
           if (detail.status === "fulfilled" && (revision === workspaceRevision.current || !itemsRef.current.some(row => row.document.id === selectedId))) {
-            const records = [...itemsRef.current.filter(row => row.document.id !== selectedId), detail.value];
+            const records = mergeWorkspaceItem(itemsRef.current, detail.value);
             itemsRef.current = records; setItems(records);
           } else if (detail.status === "rejected") {
             setLoadError(detail.reason instanceof Error ? detail.reason.message : "Unable to load documents.");
@@ -249,7 +249,14 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
     return persisted;
   }
   function navigate(destination: "documents" | "invoices") { currentDocumentId.current = null; router.push(destination === "documents" ? workspacePath : `${workspacePath}?view=invoices`, { scroll: false }); setMobileNav(false); setSelected(new Set()); setPage(1); setFilter("all"); setSaveError(null); }
-  function openItem(id: string) { currentDocumentId.current = id; setSourceUrl(null); setRuns([]); setSaveError(null); setServerErrors({}); router.push(`${workspacePath}?document=${encodeURIComponent(id)}`, { scroll: false }); setMobileNav(false); }
+  function openItem(id: string) {
+    currentDocumentId.current = id;
+    // Only clear document data when the loading effect will run for a new ID.
+    if (id !== selectedId) { setSourceUrl(null); setRuns([]); }
+    setSaveError(null); setServerErrors({});
+    router.push(`${workspacePath}?document=${encodeURIComponent(id)}`, { scroll: false });
+    setMobileNav(false);
+  }
   async function refresh() {
     if (mode === "live") { setLoading(true); setReload(value => value + 1); return; }
     setLoading(true); setLoadError(null);
@@ -432,7 +439,7 @@ export default function Workspace({ mode, user, apiSession, onLogout }: { mode: 
       <button className="brand" onClick={() => navigate("documents")} aria-label={t("Wida home · Beta")}><span className="brand-mark"><ScanLine size={23} strokeWidth={2} /></span>wida<span className="brand-dot">.</span><span className="brand-beta" >{t("Bêta")}</span></button>
       <div className="workspace-identity"><span className="workspace-avatar">W</span><div><strong>{t("My workspace")}</strong>{mode === "demo" ? <small>{t("Demo")}</small> : null}</div></div>
       <p className="nav-label">{t("WORKSPACE")}</p>
-      <nav aria-label={t("Main navigation")}><button className={`nav-item ${view !== "invoices" ? "active" : ""}`} onClick={() => navigate("documents")} aria-current={view !== "invoices" ? "page" : undefined}><Inbox size={19} /><span>{t("Documents")}</span><span className="nav-count">{items.length}</span></button><button className={`nav-item ${view === "invoices" ? "active" : ""}`} onClick={() => navigate("invoices")} aria-current={view === "invoices" ? "page" : undefined}><ReceiptText size={19} /><span>{t("Invoices")}</span></button></nav>
+      <nav aria-label={t("Main navigation")}><button className={`nav-item ${view !== "invoices" ? "active" : ""}`} onClick={() => navigate("documents")} aria-current={view !== "invoices" ? "page" : undefined}><Inbox size={19} /><span>{t("Documents")}</span><span className="nav-count">{totalDocuments}</span></button><button className={`nav-item ${view === "invoices" ? "active" : ""}`} onClick={() => navigate("invoices")} aria-current={view === "invoices" ? "page" : undefined}><ReceiptText size={19} /><span>{t("Invoices")}</span></button></nav>
       <div className="sidebar-divider" /><p className="nav-label">{t("QUICK VIEWS")}</p>
       <button className="nav-item subnav" onClick={() => { navigate("documents"); setFilter("review"); }}><FileText size={18} aria-hidden="true" /><span>{t("Needs review")}</span><span className="quiet-count">{counts.review}</span></button><button className="nav-item subnav" onClick={() => { navigate("documents"); setFilter("failed"); }}><CircleAlert size={18} aria-hidden="true" /><span>{t("Needs attention")}</span>{counts.failed ? <span className="quiet-count">{counts.failed}</span> : null}</button>
       <div className="sidebar-bottom">{isAdmin ? <button className="nav-item" aria-haspopup="dialog" onClick={() => { setPanel("admin"); setMobileNav(false); }}><ShieldCheck size={18} /><span>{t("Administrator settings")}</span></button> : null}<button className="nav-item" onClick={() => setPanel("settings")}><Settings2 size={18} /><span>{t("Workspace settings")}</span></button><button className="nav-item" onClick={() => setPanel("help")}><HelpCircle size={18} /><span>{t("Help & shortcuts")}</span></button>{mode === "live" ? <TrialBanner session={apiSession} revision={items.map(row => `${row.latestRun?.id}:${row.latestRun?.status}`).join(",")} /> : <aside className="sidebar-quota" aria-label={t("Quota en démonstration")}><div className="quota-heading"><span>{t("Pages d’analyse")}</span><strong>{t("Démo")}</strong></div><p>{t("Aucun crédit consommé")}</p><a className="quota-demo-link" href="/login">{t("Essayer avec 4 pages offertes")}<ArrowUpRight size={13} /></a></aside>}<div className="sidebar-profile"><span className="profile-avatar" aria-hidden="true">{initials}</span><div className="profile-details"><strong>{user?.displayName || t("Your workspace")}</strong><small title={user?.email}>{user?.email || t("Stored on this device")}</small></div>{onLogout ? <button className="icon-button profile-logout" aria-label={t("Sign out")} title={t("Sign out")} onClick={signOut} disabled={loggingOut}>{loggingOut ? <LoaderCircle size={17} className="spin" /> : <LogOut size={17} />}</button> : null}</div></div>

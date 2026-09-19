@@ -1,5 +1,11 @@
 import type { Invoice, ProcessingRun, WorkspaceItem } from "./types";
 
+export function mergeWorkspaceItem(items: WorkspaceItem[], detail: WorkspaceItem): WorkspaceItem[] {
+  return items.some(item => item.document.id === detail.document.id)
+    ? items.map(item => item.document.id === detail.document.id ? detail : item)
+    : [...items, detail];
+}
+
 export function mergeInvoiceResult(items: WorkspaceItem[], documentId: string, invoice: Invoice): WorkspaceItem[] {
   return items.map(item => item.document.id === documentId
     ? { ...item, invoice, document: { ...item.document, documentType: "Invoice", status: "Saved" } }
