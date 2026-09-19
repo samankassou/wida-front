@@ -77,6 +77,7 @@ export function createApiClient(session?: ApiSession) {
     requestCredits: () => request<{ requested: boolean }>("trial/credits", { method: "POST" }, session),
     fetchWorkspace: (query: Partial<WorkspaceQuery> = {}, signal?: AbortSignal) => request<WorkspacePage>(`documents/workspace/page?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))}`, { signal }, session ? { ...session, signal: signal && session.signal ? AbortSignal.any([signal, session.signal]) : signal ?? session.signal } : undefined),
     fetchWorkspaceItem: (id: string) => request<WorkspaceItem>(`documents/workspace/${encodeURIComponent(id)}`, undefined, session),
+    deleteDocument: (id: string) => request<void>(`documents/${encodeURIComponent(id)}`, { method: "DELETE" }, session),
     fetchDocument: (id: string) => request<DocumentRecord>(`documents/${encodeURIComponent(id)}`, undefined, session),
     fetchDocumentInvoice: (id: string) => request<Invoice>(`invoices/document/${encodeURIComponent(id)}`, undefined, session),
     fetchRun: (id: string) => request<ProcessingRun>(`processing/${encodeURIComponent(id)}`, undefined, session),

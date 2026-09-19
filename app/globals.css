@@ -459,3 +459,22 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); 
 
 .creator-footer { margin: 0 36px; padding: 18px 0 24px; border-top: 1px solid var(--border); }
 @media(max-width:580px) { .creator-footer { margin-inline: 14px; } }
+
+.document-delete:hover:not(:disabled) { color: var(--danger, #b42318); background: var(--danger-bg, #fef3f2); }
+.document-table .row-action-cell { white-space: nowrap; }
+@media (max-width: 580px) {
+  .document-table .row-action-cell { display: table-cell; width: 36px; padding-right: 8px; }
+  .document-table .row-action-cell .row-open { display: none; }
+}
+
+.delete-modal { width: min(460px, calc(100vw - 30px)); }
+.delete-modal .delete-modal-symbol { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 18%, transparent); }
+.delete-document-file { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--wida-radius-control); background: var(--subtle); font-size: 13px; font-weight: 500; }
+.delete-document-file svg { flex-shrink: 0; color: var(--muted); }
+.delete-document-file span { overflow-wrap: anywhere; min-width: 0; }
+.delete-modal-footer { justify-content: flex-end; flex-direction: row; }
+.button-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.button-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 85%, #000); border-color: transparent; }
+.delete-modal-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; color: var(--red); font-size: 13px; }
+.delete-modal-error svg { flex-shrink: 0; margin-top: 2px; }
+@media (max-width: 380px) { .delete-modal-footer { flex-direction: column; align-items: stretch; } .delete-modal-footer .button { align-self: stretch; } }

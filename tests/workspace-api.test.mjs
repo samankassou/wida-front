@@ -41,3 +41,29 @@ test("proxy allows workspace page and detail routes and preserves query paramete
     assert.equal(response.status, 200);
   }
 });
+
+test("document deletion sends CSRF protection and accepts an empty 204 response", async (t) => {
+  t.mock.method(globalThis, "fetch", async (path, init) => {
+    assert.equal(path, "/api/wida/documents/document-id");
+    assert.equal(init.method, "DELETE");
+    assert.equal(init.headers.get("X-CSRF-TOKEN"), "delete-token");
+    assert.equal(init.credentials, "same-origin");
+    return new Response(null, { status: 204 });
+  });
+  await createApiClient({ csrfToken: "delete-token", onUnauthenticated() {} }).deleteDocument("document-id");
+});
+
+test("proxy forwards document deletion with its CSRF token and empty response", async (t) => {
+  const endpoint = "documents/01234567-0123-0123-0123-0123456789ab";
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    assert.equal(url.pathname, `/api/${endpoint}`);
+    assert.equal(init.method, "DELETE");
+    assert.equal(init.headers.get("X-CSRF-TOKEN"), "delete-token");
+    return new Response(null, { status: 204 });
+  });
+  const response = await proxyRequest(new Request(`http://localhost:3000/api/wida/${endpoint}`, {
+    method: "DELETE", headers: { Origin: "http://localhost:3000", "X-CSRF-TOKEN": "delete-token" },
+  }), endpoint, { apiUrl: "http://localhost:5085", publicOrigin: "http://localhost:3000" });
+  assert.equal(response.status, 204);
+  assert.equal(await response.text(), "");
+});

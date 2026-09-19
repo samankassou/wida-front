@@ -86,3 +86,14 @@ export async function getDocumentFile(id: string): Promise<Blob | null> {
     transaction.oncomplete = () => db.close();
   });
 }
+
+export async function deleteDocumentFile(id: string): Promise<void> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction("documents", "readwrite");
+    transaction.objectStore("documents").delete(id);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(new Error("The local original could not be removed.")); };
+    transaction.onabort = transaction.onerror;
+  });
+}

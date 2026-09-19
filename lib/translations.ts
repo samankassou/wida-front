@@ -1,5 +1,19 @@
 // English message keys with French translations. Keep interpolation names identical.
 export const messages: Record<string, { en: string; fr: string }> = {
+  "Delete this document?": {"en": "Delete this document?", "fr": "Supprimer ce document ?"},
+  "The original file, invoice details and analysis history will be permanently removed. This cannot be undone.": {"en": "The original file, invoice details and analysis history will be permanently removed. This cannot be undone.", "fr": "Le fichier original, les données de facture et l’historique d’analyse seront définitivement supprimés. Cette action est irréversible."},
+  "Cancel": {"en": "Cancel", "fr": "Annuler"},
+  "Deleting…": {"en": "Deleting…", "fr": "Suppression…"},
+
+  "Delete “{name}”? The original file, invoice details and analysis history will be permanently removed.": {"en": "Delete “{name}”? The original file, invoice details and analysis history will be permanently removed.", "fr": "Supprimer « {name} » ? Le fichier original, les données de facture et l’historique d’analyse seront définitivement supprimés."},
+  "Delete {name}": {"en": "Delete {name}", "fr": "Supprimer {name}"},
+  "Delete document": {"en": "Delete document", "fr": "Supprimer le document"},
+  "Document deleted.": {"en": "Document deleted.", "fr": "Document supprimé."},
+  "Wait for the analysis to finish before deleting this document.": {"en": "Wait for the analysis to finish before deleting this document.", "fr": "Attendez la fin de l’analyse avant de supprimer ce document."},
+  "The document could not be deleted from browser storage. Please try again.": {"en": "The document could not be deleted from browser storage. Please try again.", "fr": "Impossible de supprimer le document du stockage du navigateur. Réessayez."},
+  "Document deleted. The local original could not be removed.": {"en": "Document deleted. The local original could not be removed.", "fr": "Document supprimé. Le fichier original local n’a pas pu être effacé."},
+  "Unable to delete this document. Please try again.": {"en": "Unable to delete this document. Please try again.", "fr": "Impossible de supprimer ce document. Réessayez."},
+
   "Unable to open the matching invoice.": {"en": "Unable to open the matching invoice.", "fr": "Impossible d’ouvrir la facture correspondante."},
   "{done} of {total} processed": {"en": "{done} of {total} processed", "fr": "{done} sur {total} traités"},
   "Existing document found. Its original file was restored; no new analysis was requested.": {"en": "Existing document found. Its original file was restored; no new analysis was requested.", "fr": "Document existant retrouvé. Son original a été restauré ; aucune nouvelle analyse n’a été demandée."},
