@@ -2,24 +2,26 @@
 
 This file records user-visible changes to the Wida frontend. The API is released independently.
 
-## [0.2.0](https://github.com/samankassou/wida-front/compare/v0.1.1...v0.2.0) (2026-09-19)
+## [Unreleased]
 
+## [0.2.0](https://github.com/samankassou/wida-front/compare/v0.1.1...v0.2.0) (2026-09-19)
 
 ### Added
 
-* **release:** automate changelog preparation with Release Please ([1ca6624](https://github.com/samankassou/wida-front/commit/1ca6624d561cb3589739c53296909944c86e8717))
-* **release:** automate changelog preparation with Release Please ([cf810b3](https://github.com/samankassou/wida-front/commit/cf810b313db9f9368c37ff46209ece6648769a13))
-
-
-### Fixed
-
-* release frontend v0.1.1 with review and export corrections ([18a38a5](https://github.com/samankassou/wida-front/commit/18a38a5e1214304a48e542cf004fd5331e1cbce0))
-
-## [Unreleased]
+- Delete documents from live and demo workspaces, including their invoice details and analysis history.
+- Confirm deletion in a styled English/French dialog with the filename, progress feedback and inline errors. Keyboard dismissal and mobile layouts are supported.
+- Prevent deletion while analysis is pending or running, and restrict live deletion to the document owner.
 
 ### Maintenance
 
 - Prepare version and changelog updates automatically through Release Please PRs, with CI checks and separate tag-based publication.
+- Handle absent release PR output without failing the workflow when no new PR is needed.
+
+### Deployment
+
+- Requires the companion API update providing owner-scoped `DELETE /api/documents/{id}` and removal of associated records and the stored original. Deploy the API update before the frontend.
+- No database migration or new environment variables are required. Failed original-file cleanup is logged and requires operator follow-up.
+- Deletion does not refund analysis credits already consumed.
 
 ## [0.1.1] - 2026-09-19
 
