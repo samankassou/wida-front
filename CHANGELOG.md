@@ -2,6 +2,14 @@
 
 This file records user-visible changes to the Wida frontend. The API is released independently.
 
+## [0.3.0](https://github.com/samankassou/wida-front/compare/v0.2.0...v0.3.0) (2026-09-19)
+
+
+### Added
+
+* **admin:** add a dedicated administration page ([7fa4514](https://github.com/samankassou/wida-front/commit/7fa451453c93b89aa9afd628ea5f68d52e04933a))
+* **admin:** replace settings modal with dedicated administration page ([61feedf](https://github.com/samankassou/wida-front/commit/61feedfeb37c4516db4a7c0cfd1f5316a7c0000d))
+
 ## [Unreleased]
 
 ## [0.2.0](https://github.com/samankassou/wida-front/compare/v0.1.1...v0.2.0) (2026-09-19)
