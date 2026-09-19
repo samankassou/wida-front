@@ -30,7 +30,7 @@ The CI workflow uses Node.js 24, the pnpm version declared in `package.json`, an
 
 ## Tag and publish
 
-After merging, fetch `main` and wait for its CI to pass. Record the exact commit and its Vercel deployment. Tag the release PR’s exact merge commit after its CI passes, rather than a later or unrelated commit:
+After merging, fetch `main` and wait for its CI to pass. Record the exact commit and its preview checks. Tag the release PR’s exact merge commit after its CI passes, rather than a later or unrelated commit:
 
 ```sh
 git fetch origin main --tags
@@ -44,6 +44,18 @@ If validation fails, fix it through a PR before publishing a new tag. Do not mov
 
 ## Deploy and verify
 
-Vercel's Git integration may deploy when `main` is updated, before the tag is pushed. A GitHub Release is not itself proof of deployment. Match the production deployment's Git SHA to the released commit and follow the [deployment checks](deployment.md#verify-the-deployment). Do not create a second deployment unnecessarily or assume a preview URL is production.
+Production follows the `production` branch. Feature and release PRs still target `main`; merging them produces previews rather than production deployments once the hosting settings below are configured. After tag CI and GitHub publication succeed, the Release workflow advances `production` to the exact tagged commit. Vercel then builds that commit using the Production environment. Match the production deployment's Git SHA to the release and follow the [deployment checks](deployment.md#verify-the-deployment). Publication and branch promotion do not prove the hosting build succeeded.
 
 For rollback, retain the previous successful production deployment URL and SHA. Restore that deployment through the configured host, verify the same production routes, and document the rollback. Ship a new patch version for subsequent fixes rather than reusing a release tag. Coordinate with the API only when a release changes its contract or configuration.
+
+## Production branch setup
+
+The `production` branch is a deployment pointer, not an integration branch. Do not merge PRs into it, push feature commits to it, or delete it during stale-branch cleanup. It starts at the last published release. Keep `main` as the repository default branch. Allow the release workflow to update `production`; do not require PR-only updates for that branch unless the workflow has an appropriate bypass.
+
+Set Vercel → wida-front → Settings → Environments → Production → Branch Tracking to `production`. Keep other branches as Preview. Production environment variables remain assigned to Production. Check branch-specific overrides and preview authentication settings separately. Until that setting is changed, merges to `main` can still deploy production.
+
+Promotion runs in the existing tag workflow after publication, not a separate `release: published` workflow: events created with `GITHUB_TOKEN` do not start another ordinary Actions workflow. The existing hosting Git integration handles the branch update, so no hosting API token or deploy-hook secret is needed.
+
+Promotions are serialized and fast-forward only. A retry at the current production commit is a no-op; an older or divergent release fails instead of rolling production backward. If publication succeeds but promotion fails, rerun the failed job. If the host build fails after promotion, retry that exact commit in the host dashboard. For an emergency rollback, restore a previous successful deployment in the host, then publish a new patch release containing the fix or revert; never force-push production or move release tags. Manual hosting deployments and rollbacks remain operator overrides.
+
+For the first release after this setup, confirm the workflow's promotion succeeds and the hosting deployment is triggered for the same SHA. The workflow reports branch promotion only; host build completion and application checks must be verified separately.

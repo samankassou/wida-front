@@ -1,5 +1,7 @@
 # Deploying the frontend
 
+Production deployment follows published releases through the `production` branch. Configure the hosting branch before relying on this behavior; see [release setup and verification](releases.md#production-branch-setup).
+
 The frontend runs a Next.js server, including the `/api/wida/...` proxy. Use a Next.js-capable host such as Vercel; a static export cannot provide connected mode. For local setup and runtime versions, see the [README](../README.md).
 
 ## Vercel with the Render API
