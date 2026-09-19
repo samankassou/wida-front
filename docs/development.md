@@ -126,3 +126,9 @@ Live document and invoice lists send search, status, currency, upload period, so
 Verify with more than one page: search for an older document, change each filter and sort, navigate forward/back, open a direct document link, complete an analysis while filtering, and export invoices across pages. The API and frontend changes must be deployed together. API tests cover owner isolation, validation, latest extraction, >500 records and PostgreSQL query translation; frontend tests cover query transport, cancellation and proxy routing.
 
 The Documents navigation badge must match the total-document overview before and after visiting additional pages. With three reviewable documents A, B, C loaded in that order, open B and wait for its live details: **Next document** must still open C. Export a credit invoice with negative amounts and confirm the CSV retains numeric negative values, while supplier/number text beginning with formula characters remains escaped.
+
+## Administration
+
+`/admin` is the dedicated administration page, linked from the live workspace for administrators. It uses the existing session, CSRF protection and admin API endpoints. A standard user sees an access-denied screen; a disconnected API displays an unavailable state rather than demo administration data. Signing in from this page returns through `/workspace?next=admin` to preserve the API's existing redirect allowlist.
+
+Verify metrics, user search/pagination, credit allowance updates, pending credit requests, role changes after session refresh, expired sessions, French/English and mobile layouts. The backend remains authoritative for administrator permissions. Navigation out of the workspace uses a full page link so the existing `beforeunload` warning still protects drafts that could not be saved locally.

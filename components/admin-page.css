@@ -1,0 +1,25 @@
+.admin-page-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px max(24px, calc((100vw - 1180px) / 2)); border-bottom: 1px solid var(--border); background: var(--surface); }
+.admin-page-header .brand { text-decoration: none; }
+.admin-page-actions { display: flex; align-items: center; gap: 14px; }
+.admin-page-content { max-width: 1180px; margin: 0 auto; padding: 32px 24px 64px; }
+.admin-back { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); text-decoration: none; }
+.admin-back:hover { color: var(--text); }
+.admin-page-title { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin: 32px 0; }
+.admin-eyebrow { display: flex; align-items: center; gap: 7px; color: var(--primary); font-size: 12px; font-weight: 600; }
+.admin-page-title h1 { font-size: clamp(28px, 4vw, 38px); letter-spacing: -.035em; padding: 8px 0; }
+.admin-page-title p, .admin-identity span { color: var(--muted); }
+.admin-identity { display: grid; gap: 4px; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.admin-settings .admin-toolbar h2 { margin: 0; }
+.admin-settings .admin-toolbar { margin-bottom: 18px; }
+.admin-settings .admin-users-title { margin-top: 36px; }
+.admin-settings .admin-search { max-width: 440px; }
+.admin-metrics > div { padding: 20px; }
+.admin-settings .admin-budget { margin-top: 14px; padding: 16px 20px; border-radius: var(--wida-radius-card); background: var(--primary-soft); color: var(--text); }
+.admin-users { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.admin-user { padding: 20px; }
+.admin-user .badge { flex-shrink: 0; }
+.admin-user-heading { align-items: flex-start; }
+.admin-skip { position: absolute; top: -80px; left: 20px; padding: 12px; background: var(--surface); z-index: 10; }
+.admin-skip:focus { top: 10px; }
+@media (max-width: 760px) { .admin-users { grid-template-columns: 1fr; } .admin-page-title { align-items: flex-start; flex-direction: column; } .admin-identity { text-align: left; } .admin-page-header { padding: 16px; } .admin-page-content { padding: 24px 16px 48px; } .admin-page-actions { gap: 8px; } }
+@media (max-width: 420px) { .admin-page-header { flex-wrap: wrap; } .admin-page-actions { flex-wrap: wrap; } .admin-user-heading { flex-wrap: wrap; } }
