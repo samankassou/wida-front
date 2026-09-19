@@ -54,10 +54,65 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          export RELEASE_COMMIT="$(git rev-parse HEAD)"
-          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
+          release_commit=$(git rev-parse HEAD)
+          gh pr list --repo "$GITHUB_REPOSITORY" --state merged \
             --label "autorelease: pending" --limit 100 --json number,mergeCommit \
-            --jq '.[] | select(.mergeCommit.oid == env.RELEASE_COMMIT) | .number')
-          for pr in $prs; do
-            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --remove-label "autorelease: pending"
-          done
+            --jq '.[] | [.number, .mergeCommit.oid] | @tsv' > "$RUNNER_TEMP/release-prs.tsv"
+          while IFS=$'\t' read -r pr commit; do
+            if [ -n "$commit" ] && git merge-base --is-ancestor "$commit" "$release_commit"; then
+              gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --remove-label "autorelease: pending"
+            fi
+          done < "$RUNNER_TEMP/release-prs.tsv"
+
+  deploy:
+    name: Deploy published release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify published release is current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,tagName \
+            --jq 'select(.isDraft == false and .isPrerelease == false) | .tagName' \
+            | grep -Fx -- "$RELEASE_TAG"
+          # A stale release retry must not roll production back.
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Check Vercel configuration
+        run: |
+          : "${VERCEL_TOKEN:?Add the VERCEL_TOKEN repository secret}"
+          : "${VERCEL_ORG_ID:?Add the VERCEL_ORG_ID repository secret}"
+          : "${VERCEL_PROJECT_ID:?Add the VERCEL_PROJECT_ID repository secret}"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          cache: true
+      - name: Install Vercel CLI
+        run: npm install --global vercel@59.23.2
+      - name: Pull production configuration
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build production artifact
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy production artifact
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"

@@ -1,5 +1,7 @@
 # Deploying the frontend
 
+Production deploys only after publication of a release tag. Feature work integrates on `develop`; `main` holds release history. Configure hosting and GitHub secrets using [the GitFlow release guide](releases.md#hosting-setup).
+
 The frontend runs a Next.js server, including the `/api/wida/...` proxy. Use a Next.js-capable host such as Vercel; a static export cannot provide connected mode. For local setup and runtime versions, see the [README](../README.md).
 
 ## Vercel with the Render API
