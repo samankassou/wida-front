@@ -4,6 +4,10 @@ This file records user-visible changes to the Wida frontend. The API is released
 
 ## [Unreleased]
 
+### Maintenance
+
+- Prepare version and changelog updates automatically through Release Please PRs, with CI checks and separate tag-based publication.
+
 ## [0.1.1] - 2026-09-19
 
 ### Fixed

@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      pull-requests: write
     env:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
@@ -39,8 +40,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "Wida Frontend $RELEASE_TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft > "$RUNNER_TEMP/existing-release.json" 2>/dev/null; then
+            # Only an already published release completes this step on a retry.
+            jq -e '.isDraft == false' "$RUNNER_TEMP/existing-release.json" > /dev/null
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Wida Frontend $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+      - name: Mark release PR as published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export RELEASE_COMMIT="$(git rev-parse HEAD)"
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
+            --label "autorelease: pending" --limit 100 --json number,mergeCommit \
+            --jq '.[] | select(.mergeCommit.oid == env.RELEASE_COMMIT) | .number')
+          for pr in $prs; do
+            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --remove-label "autorelease: pending"
+          done
