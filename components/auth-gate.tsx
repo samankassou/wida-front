@@ -7,12 +7,15 @@ import { ArrowRight, CircleAlert, LoaderCircle, LockKeyhole, ScanLine } from "lu
 import { ApiError, fetchSession, logout, type ApiSession } from "@/lib/api";
 import { AUTH_CHANGE_KEY, announceAuthChange, isLogoutEvent, loginErrorMessage, refreshActiveSession, type ActiveSession } from "@/lib/auth-state";
 import { clearLiveDrafts } from "@/lib/storage";
-import Workspace from "./workspace";
+import dynamic from "next/dynamic";
+const Workspace = dynamic(() => import("./workspace"));
+const AdminPage = dynamic(() => import("./admin-page"));
 
-export default function AuthGate({ loginPage = false }: { loginPage?: boolean }) {
+export default function AuthGate({ loginPage = false, administration = false }: { loginPage?: boolean; administration?: boolean }) {
   const { t } = useLanguage();
   const router = useRouter();
   const params = useSearchParams();
+  const redirectToAdmin = !administration && params.get("next") === "admin";
   const [session, setSession] = useState<ActiveSession | null>(null);
   const sessionRef = useRef<ActiveSession | null>(null);
   const revision = useRef(0);
@@ -57,13 +60,14 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
       announceAuthChange(result.user.id);
       setReason(null);
       setLoading(false);
-      if (loginPage) router.replace("/workspace");
+      if (redirectToAdmin) router.replace("/admin");
+      else if (loginPage) router.replace("/workspace");
     } catch (cause) {
       if (signal?.aborted || revision.current !== currentRevision) return;
       if (!sessionRef.current) setError(cause instanceof Error ? cause.message : "La connexion à Wida est indisponible. Réessayez dans un instant.");
       setLoading(false);
     }
-  }, [invalidate, loginPage, router]);
+  }, [invalidate, loginPage, redirectToAdmin, router]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,10 +104,14 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
     router.replace("/");
   }, [apiSession, session, invalidate, router]);
 
-  if (session?.user && !loginPage) return <Workspace key={session.user.id} mode="live" user={session.user} apiSession={apiSession} onLogout={signOut} />;
+  if (session?.user && !loginPage && !redirectToAdmin && administration) {
+    if (session.user.role !== "Admin") return <main className="workspace"><section className="empty-state"><LockKeyhole size={32} /><h1>{t("Administrator access required")}</h1><p>{t("This page is reserved for administrators.")}</p><a className="button" href="/workspace">{t("Back to documents")}</a></section></main>;
+    return <AdminPage key={session.user.id} user={session.user} session={apiSession} onLogout={signOut} />;
+  }
+  if (session?.user && !loginPage && !redirectToAdmin) return <Workspace key={session.user.id} mode="live" user={session.user} apiSession={apiSession} onLogout={signOut} />;
 
   const message = error || loginErrorMessage(params.get("error"));
-  const returnUrl = loginPage ? "/workspace" : `/workspace${params.size ? `?${params.toString()}` : ""}`;
+  const returnUrl = administration || redirectToAdmin ? "/workspace?next=admin" : loginPage ? "/workspace" : `/workspace${params.size ? `?${params.toString()}` : ""}`;
   return <main className="workspace auth-page" >
     <section className="auth-story" aria-label="Wida">
       <div className="brand"><span className="brand-mark"><ScanLine size={23} /></span>wida<span className="brand-dot">.</span><span className="brand-beta" >{t("Bêta")}</span></div>
@@ -114,7 +122,7 @@ export default function AuthGate({ loginPage = false }: { loginPage?: boolean })
         <h2 id="login-title">{reason === "expired" ? t("Reprenez votre travail.") : reason === "logout" ? t("À bientôt.") : t("Bienvenue dans Wida.")}</h2>
         <p className="auth-description">{reason === "expired" ? t("Reconnectez-vous avec le même compte pour retrouver vos brouillons.") : reason === "logout" ? t("Vous êtes déconnecté. Vos documents enregistrés vous attendent.") : reason === "changed" ? t("La connexion a changé dans un autre onglet. Vérifiez votre compte avant de continuer.") : t("4 pages offertes pour essayer, sans carte bancaire.")}</p>
         {message ? <div className="auth-message" role="alert"><CircleAlert size={18} /><p>{t(message)}</p></div> : null}
-        {loading || (session?.user && loginPage) ? <div className="auth-loading" role="status"><LoaderCircle className="spin" size={20} />{t("Vérification de votre session…")}</div> : <>
+        {loading || (session?.user && (loginPage || redirectToAdmin)) ? <div className="auth-loading" role="status"><LoaderCircle className="spin" size={20} />{t("Vérification de votre session…")}</div> : <>
           {googleConfigured ? <a className="button auth-google" href={`/api/wida/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`}><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.23c1.9-1.75 2.99-4.33 2.99-7.36Z" /><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.42l-3.23-2.5c-.9.6-2.05.97-3.39.97-2.61 0-4.82-1.76-5.61-4.13H3.05v2.6A10 10 0 0 0 12 22Z" /><path fill="#FBBC05" d="M6.39 13.92a6 6 0 0 1 0-3.84v-2.6H3.05a10 10 0 0 0 0 9.04l3.34-2.6Z" /><path fill="#EA4335" d="M12 5.95c1.47 0 2.79.5 3.82 1.49l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.95 5.48l3.34 2.6C7.18 7.71 9.39 5.95 12 5.95Z" /></svg>{t("Continuer avec Google")}<ArrowRight size={17} /></a> : !error ? <div className="auth-message" role="status"><LockKeyhole size={19} /><p>{t("La connexion est momentanément indisponible. Vous pouvez découvrir la démo.")}</p></div> : null}
           {error || reason === "changed" || !googleConfigured ? <button className="button button-ghost auth-retry" onClick={() => { setLoading(true); void checkSession(); }}>{t("Vérifier à nouveau")}</button> : null}
         </>}

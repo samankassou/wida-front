@@ -1,5 +1,13 @@
 // English message keys with French translations. Keep interpolation names identical.
 export const messages: Record<string, { en: string; fr: string }> = {
+  "Next": {"en": "Next", "fr": "Suivant"},
+  "Previous": {"en": "Previous", "fr": "Précédent"},
+  "Save": {"en": "Save", "fr": "Enregistrer"},
+  "Unable to sign out. Please try again.": {"en": "Unable to sign out. Please try again.", "fr": "Impossible de vous déconnecter. Réessayez."},
+  "Administration is unavailable in demo mode.": {"en": "Administration is unavailable in demo mode.", "fr": "L’administration n’est pas disponible en mode démonstration."},
+  "This page is reserved for administrators.": {"en": "This page is reserved for administrators.", "fr": "Cette page est réservée aux administrateurs."},
+  "Administrator access required": {"en": "Administrator access required", "fr": "Accès administrateur requis"},
+  "Administration": {"en": "Administration", "fr": "Administration"},
   "Delete this document?": {"en": "Delete this document?", "fr": "Supprimer ce document ?"},
   "The original file, invoice details and analysis history will be permanently removed. This cannot be undone.": {"en": "The original file, invoice details and analysis history will be permanently removed. This cannot be undone.", "fr": "Le fichier original, les données de facture et l’historique d’analyse seront définitivement supprimés. Cette action est irréversible."},
   "Cancel": {"en": "Cancel", "fr": "Annuler"},
